@@ -131,14 +131,6 @@ The Agent Optimizer evaluates your codebase across three primary economic pillar
 
 ---
 
-## Agent Preview
-
-<p align="center">
-  <img src="assets/gifs/agent-optimizer-demo.webp" alt="Agent Optimizer in Action" width="800">
-</p>
-
----
-
 ## Architecture
 
 ```mermaid
