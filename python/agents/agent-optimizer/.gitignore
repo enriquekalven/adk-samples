@@ -1,0 +1,23 @@
+.venv/
+.adk/
+__pycache__/
+*.pyc
+/.env
+baseline_*.log
+champion_github.log
+*.mermaid
+baseline_manifest.md
+# Optimization Reports
+optimization_report_*.html
+optimization_final_report_*.md
+evidence_lake.json
+cloned_repo/
+adk-python/
+deploy_stage/
+deploy_stage_fixed_final/
+registration_venv/
+../blog-writer/
+../code-translator/
+../data-analyst/
+../support-agent/
+../data-science/alloydb-auth-proxy

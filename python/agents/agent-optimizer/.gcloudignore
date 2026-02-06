@@ -1,0 +1,10 @@
+.venv/
+.adk/
+__pycache__/
+*.pyc
+.env
+.python-version
+uv.lock
+tests/
+eval/
+samples/
