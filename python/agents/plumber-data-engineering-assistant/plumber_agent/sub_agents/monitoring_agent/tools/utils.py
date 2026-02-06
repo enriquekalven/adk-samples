@@ -1,20 +1,21 @@
-"""
-This module provides utility functions for interacting with Google Cloud Monitoring and Logging.
-"""
-
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from tenacity import retry, wait_exponential, stop_after_attempt
+'\nThis module provides utility functions for interacting with Google Cloud Monitoring and Logging.\n'
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
-
 from google.api_core import exceptions as google_exceptions
 from google.cloud import logging_v2, monitoring_v3
+SEVERITIES_LIST = ['INFO', 'DEFAULT', 'WARNING', 'NOTICE', 'DEBUG', 'ERROR']
+logger = logging.getLogger('plumber-agent')
 
-SEVERITIES_LIST = ["INFO", "DEFAULT", "WARNING", "NOTICE", "DEBUG", "ERROR"]
-
-
-logger = logging.getLogger("plumber-agent")
-
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def get_cpu_utilization(project_id: str) -> dict[str, Any]:
     """
     Connects to Google Cloud Monitoring and retrieves CPU utilization
@@ -44,78 +45,30 @@ def get_cpu_utilization(project_id: str) -> dict[str, Any]:
     """
     try:
         util_client = monitoring_v3.MetricServiceClient()
-
-        # The TimeInterval constructor accepts datetime objects directly
-        interval = monitoring_v3.TimeInterval(
-            end_time=datetime.now(UTC),
-            start_time=datetime.now(UTC) - timedelta(minutes=5),
-        )
-        metric_filter = (
-            'metric.type = "compute.googleapis.com/instance/cpu/utilization"'
-        )
-
-        # The Aggregation constructor accepts timedelta objects directly
-        aggregation = monitoring_v3.Aggregation(
-            alignment_period=timedelta(seconds=60),  # Use timedelta
-            per_series_aligner=monitoring_v3.Aggregation.Aligner.ALIGN_MEAN,
-            cross_series_reducer=monitoring_v3.Aggregation.Reducer.REDUCE_MEAN,
-            group_by_fields=[
-                "resource.label.instance_id",
-                "resource.label.zone",
-            ],
-        )
-
-        response = util_client.list_time_series(
-            request={
-                "name": f"projects/{project_id}",
-                "filter": metric_filter,
-                "interval": interval,
-                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
-                "aggregation": aggregation,
-            }
-        )
-
+        interval = monitoring_v3.TimeInterval(end_time=datetime.now(UTC), start_time=datetime.now(UTC) - timedelta(minutes=5))
+        metric_filter = 'metric.type = "compute.googleapis.com/instance/cpu/utilization"'
+        aggregation = monitoring_v3.Aggregation(alignment_period=timedelta(seconds=60), per_series_aligner=monitoring_v3.Aggregation.Aligner.ALIGN_MEAN, cross_series_reducer=monitoring_v3.Aggregation.Reducer.REDUCE_MEAN, group_by_fields=['resource.label.instance_id', 'resource.label.zone'])
+        response = util_client.list_time_series(request={'name': f'projects/{project_id}', 'filter': metric_filter, 'interval': interval, 'view': monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL, 'aggregation': aggregation})
         cpu_data_report: list[str] = []
         for series in response.time_series:
-            instance_id = series.resource.labels.get("instance_id", "N/A")
-            zone = series.resource.labels.get("zone", "N/A")
-
-            cpu_data_report.append(
-                f"  Instance ID: {instance_id}, Zone: {zone}"
-            )
-
+            instance_id = series.resource.labels.get('instance_id', 'N/A')
+            zone = series.resource.labels.get('zone', 'N/A')
+            cpu_data_report.append(f'  Instance ID: {instance_id}, Zone: {zone}')
             for point in series.points:
                 value = point.value.double_value
-                # Convert the returned protobuf Timestamp to a Python datetime
-                # for cleaner, more consistent formatting in the report.
                 timestamp_dt = point.interval.end_time
-                cpu_data_report.append(
-                    f"    Timestamp: {timestamp_dt}, Value: {value:.2f}%"
-                )
-
+                cpu_data_report.append(f'    Timestamp: {timestamp_dt}, Value: {value:.2f}%')
         if not cpu_data_report:
-            message = "No CPU utilization data found for the specified project and time range."
-            return {"status": "success", "report": message}
-
-        logger.info("Successfully fetched CPU utilization data.")
-        return {
-            "status": "success",
-            "report": "CPU Utilization Data:\n" + "\n".join(cpu_data_report),
-        }
-
+            message = 'No CPU utilization data found for the specified project and time range.'
+            return {'status': 'success', 'report': message}
+        logger.info('Successfully fetched CPU utilization data.')
+        return {'status': 'success', 'report': 'CPU Utilization Data:\n' + '\n'.join(cpu_data_report)}
     except google_exceptions.GoogleAPIError as e:
-        logger.error("A Google Cloud API error occurred: %s", e, exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to get CPU utilization due to API error: {e}",
-        }
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("An unexpected error occurred: %s", e, exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to get CPU utilization due to unexpected error: {e}",
-        }
-
+        logger.error('A Google Cloud API error occurred: %s', e, exc_info=True)
+        return {'status': 'error', 'message': f'Failed to get CPU utilization due to API error: {e}'}
+    except Exception as e:
+        logger.error('An unexpected error occurred: %s', e, exc_info=True)
+        return {'status': 'error', 'message': f'Failed to get CPU utilization due to unexpected error: {e}'}
 
 def _process_log_iterator(iterator, _limit: int) -> list[str]:
     """
@@ -125,16 +78,13 @@ def _process_log_iterator(iterator, _limit: int) -> list[str]:
     log_count = 0
     for entry in iterator:
         log_count += 1
-        logger.info("Entry - %s \n %s", log_count, entry)
-        collected_logs.append(f"Entry {log_count}: {entry!s}")
+        logger.info('Entry - %s \n %s', log_count, entry)
+        collected_logs.append(f'Entry {log_count}: {entry!s}')
         if log_count >= _limit:
             break
     return collected_logs
 
-
-def get_latest_resource_based_logs(
-    project_id: str, severity: str = "", resource: str = "", _limit: int = 10
-) -> dict[str, str]:
+def get_latest_resource_based_logs(project_id: str, severity: str='', resource: str='', _limit: int=10) -> dict[str, str]:
     """
     Fetches log entries from Google Cloud Logging filtered by severity and resource type.
 
@@ -199,55 +149,26 @@ def get_latest_resource_based_logs(
         - make sure you have required fields before calling this tool.
 
     """
-
     client = logging_v2.Client(project=project_id)
-    call_args = {
-        "resource_names": [f"projects/{project_id}"],
-        "order_by": "timestamp desc",
-        "page_size": 5,
-        "max_results": _limit,
-        "filter_": (
-            f'timestamp >= "{(datetime.now() - timedelta(days=90)).isoformat()}Z"'
-        ),
-    }
-
-    full_filter = f"{resource}"
-
+    call_args = {'resource_names': [f'projects/{project_id}'], 'order_by': 'timestamp desc', 'page_size': 5, 'max_results': _limit, 'filter_': f'timestamp >= "{(datetime.now() - timedelta(days=90)).isoformat()}Z"'}
+    full_filter = f'{resource}'
     for severity_exist in SEVERITIES_LIST:
         if severity is not None and severity.upper().find(severity_exist) != -1:
-            full_filter += f" AND {severity}"
+            full_filter += f' AND {severity}'
             break
-
-    call_args["filter_"] = full_filter
-
+    call_args['filter_'] = full_filter
     try:
         iterator = client.list_entries(**call_args)
         collected_logs = _process_log_iterator(iterator, _limit)
         log_count = len(collected_logs)
-
         if log_count == 0:
-            logger.info("No log entries found matching the criteria.")
-            return {
-                "status": "success",
-                "report": "No log entries found matching the criteria.",
-            }
-
-        logger.info("\nSuccessfully fetched %s log entries.", log_count)
-        return {
-            "status": "success",
-            "report": "Fetched recent log entries:\n"
-            + "\n".join(collected_logs),
-        }
-
+            logger.info('No log entries found matching the criteria.')
+            return {'status': 'success', 'report': 'No log entries found matching the criteria.'}
+        logger.info('\nSuccessfully fetched %s log entries.', log_count)
+        return {'status': 'success', 'report': 'Fetched recent log entries:\n' + '\n'.join(collected_logs)}
     except google_exceptions.GoogleAPIError as e:
-        logger.error("A Google Cloud API error occurred: %s", e, exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to get latest resource based 10 logs due to API error: {e}",
-        }
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("An unexpected error occurred: %s", e, exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to get latest resource based 10 logs due to unexpected error: {e}",
-        }
+        logger.error('A Google Cloud API error occurred: %s', e, exc_info=True)
+        return {'status': 'error', 'message': f'Failed to get latest resource based 10 logs due to API error: {e}'}
+    except Exception as e:
+        logger.error('An unexpected error occurred: %s', e, exc_info=True)
+        return {'status': 'error', 'message': f'Failed to get latest resource based 10 logs due to unexpected error: {e}'}

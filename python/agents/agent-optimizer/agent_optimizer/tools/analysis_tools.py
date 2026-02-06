@@ -52,6 +52,7 @@ async def save_optimization_report(report_content: str, filename: str, tool_cont
         logger.error(f'Failed to save artifact: {e!s}')
         return f'Error saving report: {e!s}'
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def clone_github_repo(repo_url: str, destination_folder: str | None=None) -> str:
     """Clones a public GitHub repository into a local directory for analysis.
 

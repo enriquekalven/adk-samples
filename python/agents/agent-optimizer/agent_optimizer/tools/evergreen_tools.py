@@ -16,6 +16,7 @@ def search_framework_docs(query: str, frameworks: list[str] | None=None) -> str:
     framework_context = f" for {', '.join(frameworks)}" if frameworks else ''
     return f'SEARCH_REQUEST: {query}{framework_context}. Focus on official documentation, GitHub repos, and high-quality technical blogs (Medium, Dev.to).'
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def load_technical_url(url: str) -> str:
     """Reads and cleans the content of a technical documentation URL.
 

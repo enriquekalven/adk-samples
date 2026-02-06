@@ -1,37 +1,19 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
 import bisect
 import hashlib
 import logging
 import random
 from os.path import abspath, dirname, join
-
 BASE_DIR = dirname(abspath(__file__))
-DEBUG_PROD_SIZE = None  # set to `None` to disable
-
-DEFAULT_ATTR_PATH = join(BASE_DIR, "../data/items_ins_v2.json")
-DEFAULT_FILE_PATH = join(BASE_DIR, "../data/items_shuffle.json")
-
-DEFAULT_REVIEW_PATH = join(BASE_DIR, "../data/reviews.json")
-
-FEAT_CONV = join(BASE_DIR, "../data/feat_conv.pt")
-FEAT_IDS = join(BASE_DIR, "../data/feat_ids.pt")
-
-HUMAN_ATTR_PATH = join(BASE_DIR, "../data/items_human_ins.json")
-HUMAN_ATTR_PATH = join(BASE_DIR, "../data/items_human_ins.json")
-
+DEBUG_PROD_SIZE = None
+DEFAULT_ATTR_PATH = join(BASE_DIR, '../data/items_ins_v2.json')
+DEFAULT_FILE_PATH = join(BASE_DIR, '../data/items_shuffle.json')
+DEFAULT_REVIEW_PATH = join(BASE_DIR, '../data/reviews.json')
+FEAT_CONV = join(BASE_DIR, '../data/feat_conv.pt')
+FEAT_IDS = join(BASE_DIR, '../data/feat_ids.pt')
+HUMAN_ATTR_PATH = join(BASE_DIR, '../data/items_human_ins.json')
+HUMAN_ATTR_PATH = join(BASE_DIR, '../data/items_human_ins.json')
 
 def random_idx(cum_weights):
     """Generate random index by sampling uniformly from sum of all weights, then
@@ -44,19 +26,16 @@ def random_idx(cum_weights):
     idx = min(idx, len(cum_weights) - 2)
     return idx
 
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def setup_logger(session_id, user_log_dir):
     """Creates a log file and logging object for the corresponding session ID"""
     logger = logging.getLogger(session_id)
-    formatter = logging.Formatter("%(message)s")
-    file_handler = logging.FileHandler(
-        user_log_dir / f"{session_id}.jsonl", mode="w"
-    )
+    formatter = logging.Formatter('%(message)s')
+    file_handler = logging.FileHandler(user_log_dir / f'{session_id}.jsonl', mode='w')
     file_handler.setFormatter(formatter)
     logger.setLevel(logging.INFO)
     logger.addHandler(file_handler)
     return logger
-
 
 def generate_mturk_code(session_id: str) -> str:
     """Generates a redeem code corresponding to the session ID for an MTurk

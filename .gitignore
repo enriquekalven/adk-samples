@@ -221,8 +221,16 @@ bin/
 # Documentation
 .docs/
 
-# ADK
-.adk/
-go/agents/sail-researcher/researcher
-go/agents/sail-researcher/vendor/*
-go/agents/sail-researcher/server
+# Audit Artifacts
+evidence_lake/
+evidence_lake.json
+cockpit_report.html
+cockpit_audit.sarif
+fleet_dashboard.html
+optimization_report_*.html
+
+# Recursive folders
+python/agents/agent-optimizer/adk-samples/
+python/agents/agent-optimizer/adk-python/
+python/agents/agent-optimizer/cloned_repo/
+

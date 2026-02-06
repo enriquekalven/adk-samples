@@ -1,13 +1,9 @@
-"""
-This module provides functionality to run dbt projects locally using
-subprocess calls to the dbt CLI.
-"""
-
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from google.adk.agents.context_cache_config import ContextCacheConfig
+'\nThis module provides functionality to run dbt projects locally using\nsubprocess calls to the dbt CLI.\n'
 import logging
 import subprocess
-
-logger = logging.getLogger("plumber-agent")
-
+logger = logging.getLogger('plumber-agent')
 
 def run_dbt_project(dbt_project_path: str) -> dict[str, str | int | None]:
     """
@@ -35,45 +31,12 @@ def run_dbt_project(dbt_project_path: str) -> dict[str, str | int | None]:
                               or the exception message on failure.
     """
     try:
-        subprocess.run(
-            [
-                "dbt",
-                "debug",
-                "--project-dir",
-                dbt_project_path,
-                "--profiles-dir",
-                dbt_project_path,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        dbt_run_status = subprocess.run(
-            [
-                "dbt",
-                "run",
-                "--project-dir",
-                dbt_project_path,
-                "--profiles-dir",
-                dbt_project_path,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        return {
-            "status": "success",
-            "return_code": dbt_run_status.returncode,
-            "output": dbt_run_status.stdout,
-        }
+        subprocess.run(['dbt', 'debug', '--project-dir', dbt_project_path, '--profiles-dir', dbt_project_path], capture_output=True, text=True, check=True)
+        dbt_run_status = subprocess.run(['dbt', 'run', '--project-dir', dbt_project_path, '--profiles-dir', dbt_project_path], capture_output=True, text=True, check=True)
+        return {'status': 'success', 'return_code': dbt_run_status.returncode, 'output': dbt_run_status.stdout}
     except subprocess.CalledProcessError as cmd_err:
-        logger.error("An error occurred: %s", cmd_err, exc_info=True)
-        return {
-            "status": "error",
-            "return_code": cmd_err.returncode,
-            "output": cmd_err.stderr,
-        }
-    except Exception as err:  # pylint: disable=broad-exception-caught
-        logger.error("An error occurred: %s", err, exc_info=True)
-        return {"status": "failure", "return_code": None, "output": str(err)}
+        logger.error('An error occurred: %s', cmd_err, exc_info=True)
+        return {'status': 'error', 'return_code': cmd_err.returncode, 'output': cmd_err.stderr}
+    except Exception as err:
+        logger.error('An error occurred: %s', err, exc_info=True)
+        return {'status': 'failure', 'return_code': None, 'output': str(err)}

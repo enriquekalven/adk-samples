@@ -1,26 +1,20 @@
 """Common utility functions."""
-
 import os
 import random
 import shutil
-
 import numpy as np
 import torch
 from google.adk.models import llm_response
 
-
-def get_text_from_response(
-    response: llm_response.LlmResponse,
-) -> str:
+def get_text_from_response(response: llm_response.LlmResponse) -> str:
     """Extracts text from response."""
-    final_text = ""
+    final_text = ''
     if response.content and response.content.parts:
         num_parts = len(response.content.parts)
         for i in range(num_parts):
-            if hasattr(response.content.parts[i], "text"):
+            if hasattr(response.content.parts[i], 'text'):
                 final_text += response.content.parts[i].text
     return final_text
-
 
 def set_random_seed(seed: int) -> None:
     """Sets the random seed for reproducibility."""
@@ -31,7 +25,6 @@ def set_random_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
 
 def copy_file(source_file_path: str, destination_dir: str) -> None:
     """Copies a file to the specified directory."""

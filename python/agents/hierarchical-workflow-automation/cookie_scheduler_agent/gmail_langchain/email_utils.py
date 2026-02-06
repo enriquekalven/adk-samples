@@ -1,12 +1,12 @@
-"""
-Email utility functions using LangChain Gmail toolkit.
-These functions provide convenient wrappers for agent integration.
-"""
-
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+'\nEmail utility functions using LangChain Gmail toolkit.\nThese functions provide convenient wrappers for agent integration.\n'
 import logging
-
 from .gmail_manager import gmail_manager
-
 
 def send_confirmation_email_langchain(to: str, subject: str, body: str) -> dict:
     """
@@ -21,11 +21,10 @@ def send_confirmation_email_langchain(to: str, subject: str, body: str) -> dict:
     Returns:
         Dict with status and details
     """
-    logging.info(f"LangChain Gmail: Sending confirmation email to {to}")
-    return gmail_manager.send_email(to, subject, body, "html")
+    logging.info(f'LangChain Gmail: Sending confirmation email to {to}')
+    return gmail_manager.send_email(to, subject, body, 'html')
 
-
-def search_gmail_messages(query: str, max_results: int = 10) -> dict:
+def search_gmail_messages(query: str, max_results: int=10) -> dict:
     """
     Wrapper function for searching Gmail messages via LangChain.
 
@@ -36,10 +35,10 @@ def search_gmail_messages(query: str, max_results: int = 10) -> dict:
     Returns:
         Dict with search results
     """
-    logging.info(f"LangChain Gmail: Searching messages with query: {query}")
+    logging.info(f'LangChain Gmail: Searching messages with query: {query}')
     return gmail_manager.search_messages(query, max_results)
 
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def get_gmail_message_details(message_id: str) -> dict:
     """
     Wrapper function for getting message details via LangChain.
@@ -50,10 +49,10 @@ def get_gmail_message_details(message_id: str) -> dict:
     Returns:
         Dict with message details
     """
-    logging.info(f"LangChain Gmail: Getting message details for {message_id}")
+    logging.info(f'LangChain Gmail: Getting message details for {message_id}')
     return gmail_manager.get_message(message_id)
 
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def get_gmail_thread_details(thread_id: str) -> dict:
     """
     Wrapper function for getting thread details via LangChain.
@@ -64,9 +63,8 @@ def get_gmail_thread_details(thread_id: str) -> dict:
     Returns:
         Dict with thread details
     """
-    logging.info(f"LangChain Gmail: Getting thread details for {thread_id}")
+    logging.info(f'LangChain Gmail: Getting thread details for {thread_id}')
     return gmail_manager.get_thread(thread_id)
-
 
 def check_gmail_availability() -> bool:
     """
@@ -77,7 +75,7 @@ def check_gmail_availability() -> bool:
     """
     return gmail_manager.is_available()
 
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def get_gmail_status() -> dict:
     """
     Get comprehensive status of Gmail LangChain integration.
@@ -85,9 +83,4 @@ def get_gmail_status() -> dict:
     Returns:
         Dict with integration status details
     """
-    return {
-        "available": gmail_manager.is_available(),
-        "tools": gmail_manager.get_available_tools(),
-        "credentials_path": gmail_manager.credentials_file,
-        "token_path": gmail_manager.token_file,
-    }
+    return {'available': gmail_manager.is_available(), 'tools': gmail_manager.get_available_tools(), 'credentials_path': gmail_manager.credentials_file, 'token_path': gmail_manager.token_file}

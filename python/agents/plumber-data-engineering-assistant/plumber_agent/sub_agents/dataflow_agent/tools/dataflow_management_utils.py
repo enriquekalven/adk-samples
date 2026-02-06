@@ -1,35 +1,22 @@
-"""
-This module provides utility functions for interacting with the Google Cloud Dataflow API.
-It includes functions for listing, getting details of, and canceling Dataflow jobs.
-"""
-
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from tenacity import retry, wait_exponential, stop_after_attempt
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from tenacity import retry, wait_exponential, stop_after_attempt
+'\nThis module provides utility functions for interacting with the Google Cloud Dataflow API.\nIt includes functions for listing, getting details of, and canceling Dataflow jobs.\n'
 import logging
 from http import HTTPStatus
-
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
-# --- Configuration and API Client Setup ---
-logger = logging.getLogger("plumber-agent")
+logger = logging.getLogger('plumber-agent')
 try:
-    credentials, _ = default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    dataflow_service = build("dataflow", "v1b3", credentials=credentials)
+    credentials, _ = default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
+    dataflow_service = build('dataflow', 'v1b3', credentials=credentials)
 except Exception as e:
-    logger.error("An error occurred: %s", e, exc_info=True)
-    raise RuntimeError(
-        f"Failed to initialize Google API clients. Error: {e}"
-    ) from e
+    logger.error('An error occurred: %s', e, exc_info=True)
+    raise RuntimeError(f'Failed to initialize Google API clients. Error: {e}') from e
 
-
-# ===== Dataflow Job and Template Management Tools =====
-
-
-def list_dataflow_jobs(
-    project_id: str, location: str | None = None, status: str | None = None
-) -> dict[str, str]:
+def list_dataflow_jobs(project_id: str, location: str | None=None, status: str | None=None) -> dict[str, str]:
     """
     Lists up to 30 of the most recent Google Cloud Dataflow jobs for a given project.
 
@@ -59,60 +46,28 @@ def list_dataflow_jobs(
                     "error_message": str  # Description of the API error.
                 }
     """
-    search_location = location or "-"
+    search_location = location or '-'
     print(f"INFO: Listing jobs in location: '{search_location}'")
-
     try:
-        request = (
-            dataflow_service.projects()  # pylint: disable=no-member
-            .locations()
-            .jobs()
-            .list(projectId=project_id, location=search_location)
-        )
+        request = dataflow_service.projects().locations().jobs().list(projectId=project_id, location=search_location)
         response = request.execute()
-        jobs = response.get("jobs", [])
-
+        jobs = response.get('jobs', [])
         if status:
-            jobs = [
-                job
-                for job in jobs
-                if job.get("currentState", "").lower()
-                == f"job_state_{status.lower()}"
-            ]
-
-        search_scope = (
-            "in all regions"
-            if search_location == "-"
-            else f"in location '{search_location}'"
-        )
-
+            jobs = [job for job in jobs if job.get('currentState', '').lower() == f'job_state_{status.lower()}']
+        search_scope = 'in all regions' if search_location == '-' else f"in location '{search_location}'"
         if not jobs:
-            return {
-                "status": "success",
-                "report": f"No Dataflow jobs found {search_scope}.",
-            }
-
-        # Sort jobs by createTime in descending order and take the top 30
-        jobs.sort(key=lambda x: x["createTime"], reverse=True)
+            return {'status': 'success', 'report': f'No Dataflow jobs found {search_scope}.'}
+        jobs.sort(key=lambda x: x['createTime'], reverse=True)
         jobs = jobs[:30]
-
-        report = f"Found {len(jobs)} jobs {search_scope}:\n"
+        report = f'Found {len(jobs)} jobs {search_scope}:\n'
         for job in jobs:
             report += f"- Job Name: {job['name']} (ID: {job['id']})\n"
-        return {"status": "success", "report": report}
+        return {'status': 'success', 'report': report}
     except HttpError as e:
-        logger.error("An error occurred: %s", e, exc_info=True)
-        return {
-            "status": "error",
-            "error_message": (
-                f"API Error listing jobs: {e.reason} (Code: {e.status_code})"
-            ),
-        }
+        logger.error('An error occurred: %s', e, exc_info=True)
+        return {'status': 'error', 'error_message': f'API Error listing jobs: {e.reason} (Code: {e.status_code})'}
 
-
-def get_dataflow_job_details(
-    project_id: str, job_id: str, location: str
-) -> dict[str, str]:
+def get_dataflow_job_details(project_id: str, job_id: str, location: str) -> dict[str, str]:
     """
     Retrieves detailed information and metrics for a specific Google Cloud
     Dataflow job.
@@ -150,61 +105,21 @@ def get_dataflow_job_details(
 
     """
     try:
-        job = (
-            dataflow_service.projects()  # pylint: disable=no-member
-            .locations()
-            .jobs()
-            .get(projectId=project_id, location=location, jobId=job_id)
-            .execute()
-        )
-        report = (
-            f"Job Details:\n"
-            f"  ID: {job['id']}\n"
-            f"  Name: {job['name']}\n"
-            f"  State: {job['currentState']}\n"
-            f"  Location: {job.get('location', 'N/A')}\n"
-            f"  Type: {job.get('type', 'N/A')}\n"
-            f"  Created: {job['createTime']}\n"
-        )
-
-        metrics = (
-            dataflow_service.projects()  # pylint: disable=no-member
-            .locations()
-            .jobs()
-            .getMetrics(projectId=project_id, location=location, jobId=job_id)
-            .execute()
-        )
-        report += "\nJob Metrics:\n"
-        for metric in metrics.get("metrics", []):
-            report += (
-                f"- {metric['name']['name']}: {metric.get('scalar', 'N/A')}\n"
-            )
-
-        return {
-            "status": "success",
-            "report": report or "No metrics available for this job.",
-        }
+        job = dataflow_service.projects().locations().jobs().get(projectId=project_id, location=location, jobId=job_id).execute()
+        report = f"Job Details:\n  ID: {job['id']}\n  Name: {job['name']}\n  State: {job['currentState']}\n  Location: {job.get('location', 'N/A')}\n  Type: {job.get('type', 'N/A')}\n  Created: {job['createTime']}\n"
+        metrics = dataflow_service.projects().locations().jobs().getMetrics(projectId=project_id, location=location, jobId=job_id).execute()
+        report += '\nJob Metrics:\n'
+        for metric in metrics.get('metrics', []):
+            report += f"- {metric['name']['name']}: {metric.get('scalar', 'N/A')}\n"
+        return {'status': 'success', 'report': report or 'No metrics available for this job.'}
     except HttpError as e:
-        logger.error("An error occurred: %s", e, exc_info=True)
+        logger.error('An error occurred: %s', e, exc_info=True)
         if e.status_code == HTTPStatus.NOT_FOUND:
-            error_message = (
-                f"Job with ID '{job_id}' not found in location '{location}'. "
-                "Please verify the job ID and its location. You can use 'list_dataflow_jobs' "
-                "to find the correct location for all jobs."
-            )
-            return {
-                "status": "error",
-                "error_message": error_message,
-            }
-        return {
-            "status": "error",
-            "error_message": (f"API Error: {e.reason} (Code: {e.status_code})"),
-        }
+            error_message = f"Job with ID '{job_id}' not found in location '{location}'. Please verify the job ID and its location. You can use 'list_dataflow_jobs' to find the correct location for all jobs."
+            return {'status': 'error', 'error_message': error_message}
+        return {'status': 'error', 'error_message': f'API Error: {e.reason} (Code: {e.status_code})'}
 
-
-def cancel_dataflow_job(
-    project_id: str, job_id: str, location: str
-) -> dict[str, str]:
+def cancel_dataflow_job(project_id: str, job_id: str, location: str) -> dict[str, str]:
     """
     Cancels a running Google Cloud Dataflow job.
 
@@ -241,48 +156,16 @@ def cancel_dataflow_job(
                     "error_message": str  # Error message describing the failure.
                 }
     """
-    print(
-        f"INFO: Attempting to send cancellation request for job '{job_id}' in location "
-        f"'{location}'..."
-    )
+    print(f"INFO: Attempting to send cancellation request for job '{job_id}' in location '{location}'...")
     try:
-        dataflow_service.projects().locations().jobs().update(  # pylint: disable=no-member
-            projectId=project_id,
-            location=location,
-            jobId=job_id,
-            body={"requestedState": "JOB_STATE_CANCELLED"},
-        ).execute()
-        return {
-            "status": "success",
-            "report": f"Job {job_id} cancellation request sent.",
-        }
+        dataflow_service.projects().locations().jobs().update(projectId=project_id, location=location, jobId=job_id, body={'requestedState': 'JOB_STATE_CANCELLED'}).execute()
+        return {'status': 'success', 'report': f'Job {job_id} cancellation request sent.'}
     except HttpError as e:
-        logger.error("An error occurred: %s", e, exc_info=True)
+        logger.error('An error occurred: %s', e, exc_info=True)
         if e.status_code == HTTPStatus.NOT_FOUND:
-            error_message = (
-                f"Job with ID '{job_id}' not found in location '{location}'. "
-                "Please verify the job ID and its location. Use "
-                "'list_dataflow_jobs()' to confirm."
-            )
-            return {
-                "status": "error",
-                "error_message": error_message,
-            }
-        if (
-            e.status_code == HTTPStatus.BAD_REQUEST
-            and "immutable" in e.reason.lower()
-        ):
-            error_message = (
-                f"Job '{job_id}' in '{location}' is already in a terminal "
-                "state and cannot be cancelled."
-            )
-            return {
-                "status": "error",
-                "error_message": error_message,
-            }
-        return {
-            "status": "error",
-            "error_message": (
-                f"API Error cancelling job: {e.reason} (Code: {e.status_code})"
-            ),
-        }
+            error_message = f"Job with ID '{job_id}' not found in location '{location}'. Please verify the job ID and its location. Use 'list_dataflow_jobs()' to confirm."
+            return {'status': 'error', 'error_message': error_message}
+        if e.status_code == HTTPStatus.BAD_REQUEST and 'immutable' in e.reason.lower():
+            error_message = f"Job '{job_id}' in '{location}' is already in a terminal state and cannot be cancelled."
+            return {'status': 'error', 'error_message': error_message}
+        return {'status': 'error', 'error_message': f'API Error cancelling job: {e.reason} (Code: {e.status_code})'}

@@ -1,47 +1,30 @@
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
 from google.adk.tools import FunctionTool, ToolContext
-
 from .. import config
 
-
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def check_condition_and_escalate_tool(tool_context: ToolContext) -> dict:
     """Checks the loop termination condition and escalates if met or max count reached."""
-
-    # Increment loop iteration count using state
-    current_loop_count = tool_context.state.get("loop_iteration", 0)
+    current_loop_count = tool_context.state.get('loop_iteration', 0)
     current_loop_count += 1
-    tool_context.state["loop_iteration"] = current_loop_count
-
-    # Define maximum iterations
+    tool_context.state['loop_iteration'] = current_loop_count
     max_iterations = config.MAX_ITERATIONS
-
-    # Get the condition result set by the sequential agent from state
-    total_score = tool_context.state.get("total_score", 50)
-
+    total_score = tool_context.state.get('total_score', 50)
     condition_met = total_score > config.SCORE_THRESHOLD
-
-    response_message = f"Check iteration {current_loop_count}: Sequential condition met = {condition_met}. "
-
-    # Check if the condition is met OR maximum iterations are reached
+    response_message = f'Check iteration {current_loop_count}: Sequential condition met = {condition_met}. '
     if condition_met:
-        print("  Condition met. Setting escalate=True to stop the LoopAgent.")
+        print('  Condition met. Setting escalate=True to stop the LoopAgent.')
         tool_context.actions.escalate = True
-        response_message += "Condition met, stopping loop."
+        response_message += 'Condition met, stopping loop.'
     elif current_loop_count >= max_iterations:
-        print(
-            f"  Max iterations ({max_iterations}) reached. Setting escalate=True to stop the LoopAgent."
-        )
+        print(f'  Max iterations ({max_iterations}) reached. Setting escalate=True to stop the LoopAgent.')
         tool_context.actions.escalate = True
-        response_message += "Max iterations reached, stopping loop."
+        response_message += 'Max iterations reached, stopping loop.'
     else:
-        print(
-            "  Condition not met and max iterations not reached. Loop will continue."
-        )
-        response_message += "Loop continues."
-
-    return {
-        "status": "Evaluated scoring condition",
-        "message": response_message,
-    }
-
-
+        print('  Condition not met and max iterations not reached. Loop will continue.')
+        response_message += 'Loop continues.'
+    return {'status': 'Evaluated scoring condition', 'message': response_message}
 check_tool_condition = FunctionTool(func=check_condition_and_escalate_tool)

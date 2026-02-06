@@ -1,6 +1,5 @@
 import os
 
-
 def load_prompt(base_dir: str, filename: str) -> str:
     """
     Loads a prompt text from a file.
@@ -13,6 +12,6 @@ def load_prompt(base_dir: str, filename: str) -> str:
     Returns:
         The content of the prompt file.
     """
-    prompt_path = os.path.join(base_dir, "prompts", filename)
+    prompt_path = os.path.join(base_dir, 'prompts', filename)
     with open(prompt_path) as f:
         return f.read()

@@ -1,28 +1,14 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
 import json
 import logging
 from collections.abc import Sequence
 from typing import Any
-
 from google.cloud import logging as google_cloud_logging
 from google.cloud import storage
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExportResult
-
 
 class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
     """
@@ -33,14 +19,7 @@ class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
     by leveraging Cloud Logging (which has a 256KB limit) and Cloud Storage for larger payloads.
     """
 
-    def __init__(
-        self,
-        logging_client: google_cloud_logging.Client | None = None,
-        storage_client: storage.Client | None = None,
-        bucket_name: str | None = None,
-        debug: bool = False,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, logging_client: google_cloud_logging.Client | None=None, storage_client: storage.Client | None=None, bucket_name: str | None=None, debug: bool=False, **kwargs: Any) -> None:
         """
         Initialize the exporter with Google Cloud clients and configuration.
 
@@ -52,18 +31,13 @@ class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
         """
         super().__init__(**kwargs)
         self.debug = debug
-        self.logging_client = logging_client or google_cloud_logging.Client(
-            project=self.project_id
-        )
+        self.logging_client = logging_client or google_cloud_logging.Client(project=self.project_id)
         self.logger = self.logging_client.logger(__name__)
-        self.storage_client = storage_client or storage.Client(
-            project=self.project_id
-        )
-        self.bucket_name = (
-            bucket_name or f"{self.project_id}-test-agent-logs-data"
-        )
+        self.storage_client = storage_client or storage.Client(project=self.project_id)
+        self.bucket_name = bucket_name or f'{self.project_id}-test-agent-logs-data'
         self.bucket = self.storage_client.bucket(self.bucket_name)
 
+    @retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         """
         Export the spans to Google Cloud Logging and Cloud Trace.
@@ -73,30 +47,15 @@ class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
         """
         for span in spans:
             span_context = span.get_span_context()
-            trace_id = format(span_context.trace_id, "x")
-            span_id = format(span_context.span_id, "x")
+            trace_id = format(span_context.trace_id, 'x')
+            span_id = format(span_context.span_id, 'x')
             span_dict = json.loads(span.to_json())
-
-            span_dict["trace"] = f"projects/{self.project_id}/traces/{trace_id}"
-            span_dict["span_id"] = span_id
-
-            span_dict = self._process_large_attributes(
-                span_dict=span_dict, span_id=span_id
-            )
-
+            span_dict['trace'] = f'projects/{self.project_id}/traces/{trace_id}'
+            span_dict['span_id'] = span_id
+            span_dict = self._process_large_attributes(span_dict=span_dict, span_id=span_id)
             if self.debug:
                 print(span_dict)
-
-            # Log the span data to Google Cloud Logging
-            self.logger.log_struct(
-                span_dict,
-                labels={
-                    "type": "agent_telemetry",
-                    "service_name": "test-agent",
-                },
-                severity="INFO",
-            )
-        # Export spans to Google Cloud Trace using the parent class method
+            self.logger.log_struct(span_dict, labels={'type': 'agent_telemetry', 'service_name': 'test-agent'}, severity='INFO')
         return super().export(spans)
 
     def store_in_gcs(self, content: str, span_id: str) -> str:
@@ -108,17 +67,12 @@ class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
         :return: The  GCS URI of the stored content
         """
         if not self.storage_client.bucket(self.bucket_name).exists():
-            logging.warning(
-                f"Bucket {self.bucket_name} not found. "
-                "Unable to store span attributes in GCS."
-            )
-            return "GCS bucket not found"
-
-        blob_name = f"spans/{span_id}.json"
+            logging.warning(f'Bucket {self.bucket_name} not found. Unable to store span attributes in GCS.')
+            return 'GCS bucket not found'
+        blob_name = f'spans/{span_id}.json'
         blob = self.bucket.blob(blob_name)
-
-        blob.upload_from_string(content, "application/json")
-        return f"gs://{self.bucket_name}/{blob_name}"
+        blob.upload_from_string(content, 'application/json')
+        return f'gs://{self.bucket_name}/{blob_name}'
 
     def _process_large_attributes(self, span_dict: dict, span_id: str) -> dict:
         """
@@ -130,24 +84,13 @@ class CloudTraceLoggingSpanExporter(CloudTraceSpanExporter):
         :param span_id: The span ID
         :return: The updated span dictionary
         """
-        attributes = span_dict["attributes"]
-        if len(json.dumps(attributes).encode()) > 255 * 1024:  # 250 KB
-            # Separate large payload from other attributes
+        attributes = span_dict['attributes']
+        if len(json.dumps(attributes).encode()) > 255 * 1024:
             attributes_payload = dict(attributes.items())
             attributes_retain = dict(attributes.items())
-
-            # Store large payload in GCS
             gcs_uri = self.store_in_gcs(json.dumps(attributes_payload), span_id)
-            attributes_retain["uri_payload"] = gcs_uri
-            attributes_retain["url_payload"] = (
-                f"https://storage.mtls.cloud.google.com/"
-                f"{self.bucket_name}/spans/{span_id}.json"
-            )
-
-            span_dict["attributes"] = attributes_retain
-            logging.info(
-                "Length of payload span above 250 KB, storing attributes in GCS "
-                "to avoid large log entry errors"
-            )
-
+            attributes_retain['uri_payload'] = gcs_uri
+            attributes_retain['url_payload'] = f'https://storage.mtls.cloud.google.com/{self.bucket_name}/spans/{span_id}.json'
+            span_dict['attributes'] = attributes_retain
+            logging.info('Length of payload span above 250 KB, storing attributes in GCS to avoid large log entry errors')
         return span_dict

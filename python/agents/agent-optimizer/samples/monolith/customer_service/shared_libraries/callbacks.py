@@ -84,6 +84,7 @@ def lowercase_value(value):
     else:
         return value
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def before_tool(tool: BaseTool, args: Dict[str, Any], tool_context: CallbackContext):
     lowercase_value(args)
     if 'customer_id' in args:
@@ -108,6 +109,7 @@ def after_tool(tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext, 
             logger.debug('Applying discount to the cart')
     return None
 
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
 def before_agent(callback_context: InvocationContext):
     if 'customer_profile' not in callback_context.state:
         callback_context.state['customer_profile'] = Customer.get_customer('123').to_json()
