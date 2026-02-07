@@ -1,44 +1,34 @@
-"""Utility functions for the Dataproc template agent module."""
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
+from google.adk.agents.context_cache_config import ContextCacheConfig
+'Utility functions for the Dataproc template agent module.'
 import json
 import logging
 import os
 import shutil
 import subprocess
-
 import git
 import vertexai
 from dotenv import load_dotenv
 from vertexai.generative_models import GenerativeModel
-
-from .constants import (
-    DATAPROC_TEMPLATE_GIT_URL,
-    GIT_PATH,
-    LANGUAGE_OPTIONS,
-    TEMP_DIR_PATH,
-    TEMPLATE_REPO_PATH,
-)
-from .prompts import (
-    CORRECT_JAVA_TEMPLATE_FILE_INSTRUCTION,
-    CORRECT_PYTHON_TEMPLATE_FILE_INSTRUCTION,
-    CORRECT_README_FILE_INSTRUCTION,
-    SEARCH_DATAPROC_TEMPLATE_INSTRUCTION,
-    TRANSFORMATION_CODE_GENERATION_PROMPT,
-)
-
-logger = logging.getLogger("plumber-agent")
-
-# IMPORTING ENVIRONMENT VARIABLES FROM .env FILE
+from .constants import DATAPROC_TEMPLATE_GIT_URL, GIT_PATH, LANGUAGE_OPTIONS, TEMP_DIR_PATH, TEMPLATE_REPO_PATH
+from .prompts import CORRECT_JAVA_TEMPLATE_FILE_INSTRUCTION, CORRECT_PYTHON_TEMPLATE_FILE_INSTRUCTION, CORRECT_README_FILE_INSTRUCTION, SEARCH_DATAPROC_TEMPLATE_INSTRUCTION, TRANSFORMATION_CODE_GENERATION_PROMPT
+logger = logging.getLogger('plumber-agent')
 load_dotenv()
+vertexai.init(project=os.getenv('GOOGLE_CLOUD_PROJECT'), location=os.getenv('GOOGLE_CLOUD_LOCATION'))
 
-# ENABLING VERTEX AI
-vertexai.init(
-    project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-    location=os.getenv("GOOGLE_CLOUD_LOCATION"),
-)
-
-
-# UTIL FUNCTION TO LIST THE FILES IN THE DIRECTORY BASED ON THE INPUT REGEX
 def find_files(directory: str, regex: str) -> list:
     """
     Recursively finds files in a given directory that match a specified regex pattern.
@@ -55,31 +45,15 @@ def find_files(directory: str, regex: str) -> list:
         if no matches are found or if an error occurs during execution.
     """
     try:
-        readmd_run_cmd = [
-            "find",
-            directory,
-            "-iname",
-            regex,
-            "-not",
-            "-iname",
-            "*Config*",
-        ]
-
-        result = subprocess.run(
-            readmd_run_cmd, capture_output=True, text=True, check=True
-        )
+        readmd_run_cmd = ['find', directory, '-iname', regex, '-not', '-iname', '*Config*']
+        result = subprocess.run(readmd_run_cmd, capture_output=True, text=True, check=True)
         files = result.stdout.splitlines()
-
         return files
-    except Exception as err:  # pylint: disable=broad-exception-caught
-        logger.error("An error occurred: %s", err, exc_info=True)
+    except Exception as err:
+        logger.error('An error occurred: %s', err, exc_info=True)
         return []
 
-
-# UTIL FUNCTION TO LIST THE FILES IN THE DIRECTORY BASED ON THE INPUT REGEX
-def get_dataproc_template_mapping(
-    readme_files_list: list, user_prompt: str, language: LANGUAGE_OPTIONS
-) -> str:
+def get_dataproc_template_mapping(readme_files_list: list, user_prompt: str, language: LANGUAGE_OPTIONS) -> str:
     """
     Maps a user's natural language prompt to the most relevant Dataproc template
     by analyzing available README files and template scripts using a generative model.
@@ -109,83 +83,38 @@ def get_dataproc_template_mapping(
         Returns an empty JSON string `'{}'` if any step in the process fails.
     """
     try:
-        model = GenerativeModel("gemini-2.0-flash")
-
-        # FIND THE CORRECT README FILE BASED ON THE USER INPUT
-        response = model.generate_content(
-            CORRECT_README_FILE_INSTRUCTION.format(
-                user_prompt=user_prompt, readme_files_list=readme_files_list
-            )
-        )
-        correct_readme_file = response.text.replace("\n", "")
+        model = GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(CORRECT_README_FILE_INSTRUCTION.format(user_prompt=user_prompt, readme_files_list=readme_files_list))
+        correct_readme_file = response.text.replace('\n', '')
         readme_path = os.path.dirname(correct_readme_file)
-
-        # IF NO TEMPLATES FOUND FOR A GIVEN SOURCE - RETURN {}
-        if correct_readme_file == "not found":
-            print("readme file not found")
+        if correct_readme_file == 'not found':
+            print('readme file not found')
             return json.dumps({})
-
         template_files_list = []
-        if language == "Python":
-            # FETCH ALL THE TEMPLATES FROM THE README PATH
-            template_files_list = find_files(
-                directory=readme_path, regex="*_to_*.py"
-            )
-        elif language == "Java":
-            # FETCH ALL THE TEMPLATES FROM THE README PATH
-            template_files_list = find_files(
-                directory=readme_path, regex="*To*.java"
-            )
-
-        # FIND THE CORRECT TEMPLATE FILE BASED ON THE USER INPUT
-        if language.upper() == "JAVA":
-            response = model.generate_content(
-                CORRECT_JAVA_TEMPLATE_FILE_INSTRUCTION.format(
-                    user_prompt=user_prompt,
-                    template_files_list=template_files_list,
-                )
-            )
+        if language == 'Python':
+            template_files_list = find_files(directory=readme_path, regex='*_to_*.py')
+        elif language == 'Java':
+            template_files_list = find_files(directory=readme_path, regex='*To*.java')
+        if language.upper() == 'JAVA':
+            response = model.generate_content(CORRECT_JAVA_TEMPLATE_FILE_INSTRUCTION.format(user_prompt=user_prompt, template_files_list=template_files_list))
         else:
-            response = model.generate_content(
-                CORRECT_PYTHON_TEMPLATE_FILE_INSTRUCTION.format(
-                    user_prompt=user_prompt,
-                    template_files_list=template_files_list,
-                )
-            )
-        correct_template = response.text.replace("\n", "")
-
-        # IF NO TEMPLATES FOUND FOR A GIVEN SOURCE TO TARGET - RETURN {}
-        if correct_template == "not found":
-            print("correct template not found")
+            response = model.generate_content(CORRECT_PYTHON_TEMPLATE_FILE_INSTRUCTION.format(user_prompt=user_prompt, template_files_list=template_files_list))
+        correct_template = response.text.replace('\n', '')
+        if correct_template == 'not found':
+            print('correct template not found')
             return json.dumps({})
-
-        # READING THE CONTENT OF README FILE
-        with open(correct_readme_file, encoding="utf-8") as readme_file:
+        with open(correct_readme_file, encoding='utf-8') as readme_file:
             readme_content = readme_file.read()
-
-        # FETCHING THE CORRECT DATAPROC TEMPLATE FROM THE README FILE
-        instruction = SEARCH_DATAPROC_TEMPLATE_INSTRUCTION.format(
-            user_prompt=user_prompt, readme_content=readme_content
-        )
+        instruction = SEARCH_DATAPROC_TEMPLATE_INSTRUCTION.format(user_prompt=user_prompt, readme_content=readme_content)
         response = model.generate_content(instruction)
-
-        # CLEANING THE API RESPONSE
-        response = response.text.replace("```json", "").replace("```", "")
+        response = response.text.replace('```json', '').replace('```', '')
         response = json.loads(response)
-        response["template_path"] = correct_template
-
+        response['template_path'] = correct_template
         return json.dumps(response)
-
-    except Exception as err:  # pylint: disable=broad-exception-caught
-        logger.error(
-            "An error occurred while mapping the template: %s",
-            err,
-            exc_info=True,
-        )
+    except Exception as err:
+        logger.error('An error occurred while mapping the template: %s', err, exc_info=True)
         return json.dumps({})
 
-
-# UTILITY FUNCTION TO CLONE DATAPROC TEMPLATE GIT REPO
 def get_dataproc_template_repo() -> dict[str, str]:
     """
     Clones or updates the local copy of the Dataproc templates GitHub repository.
@@ -204,34 +133,18 @@ def get_dataproc_template_repo() -> dict[str, str]:
         Catches exceptions and returns an error message in the "status" field.
     """
     try:
-        # IF THE TEMPLATE ALREADY EXISTS, JUST PULL THE LATEST CHANGES TO REPO
-        if os.path.exists(f"./{GIT_PATH}/dataproc_template"):
-            repo = git.Repo(f"./{GIT_PATH}/dataproc_template")
+        if os.path.exists(f'./{GIT_PATH}/dataproc_template'):
+            repo = git.Repo(f'./{GIT_PATH}/dataproc_template')
             origin = repo.remotes.origin
-            origin.pull("main")
-            return {
-                "status": "success - repo already exists, updated with latest changes",
-                "repo_path": f"./{GIT_PATH}/dataproc_template",
-            }
-        # CLONE THE DATAPROC TEMPLATE REPO
-        git.Repo.clone_from(
-            DATAPROC_TEMPLATE_GIT_URL,
-            to_path=f"./{GIT_PATH}/dataproc_template",
-            branch="main",
-        )
-        return {
-            "status": "success - repo created",
-            "repo_path": f"./{GIT_PATH}/dataproc_template",
-        }
-    except Exception as err:  # pylint: disable=broad-exception-caught
-        logger.error("An error occurred: %s", err, exc_info=True)
-        return {"status": f"error - {err!s}"}
+            origin.pull('main')
+            return {'status': 'success - repo already exists, updated with latest changes', 'repo_path': f'./{GIT_PATH}/dataproc_template'}
+        git.Repo.clone_from(DATAPROC_TEMPLATE_GIT_URL, to_path=f'./{GIT_PATH}/dataproc_template', branch='main')
+        return {'status': 'success - repo created', 'repo_path': f'./{GIT_PATH}/dataproc_template'}
+    except Exception as err:
+        logger.error('An error occurred: %s', err, exc_info=True)
+        return {'status': f'error - {err!s}'}
 
-
-# UTILITY FUNCTION TO VALIDATE THE USER INPUT PARAMS FOR A GIVEN TEMPLATE
-def validate_input_params(
-    template_params: dict, input_params: dict
-) -> dict[str, str]:
+def validate_input_params(template_params: dict, input_params: dict) -> dict[str, str]:
     """
     Validates user-provided input parameters against a template's required and
     optional parameters.
@@ -256,49 +169,22 @@ def validate_input_params(
         during validation.
     """
     try:
-        required_template_params = template_params.get("required", [])
-        optional_template_params = template_params.get("optional", [])
-
+        required_template_params = template_params.get('required', [])
+        optional_template_params = template_params.get('optional', [])
         all_params = required_template_params + optional_template_params
         input_params_name = input_params.keys()
-
-        # CHECK FOR ANY INVALID PARAMETER
         invalid_input_params = list(set(input_params_name) - set(all_params))
-
         if invalid_input_params:
-            return {
-                "validation_result": "failed",
-                "comment": "Invalid param passed",
-            }
-
-        # CHECK WHETHER ALL REQUIRED PARAMS ARE PASSED OR NOT
-        all_required_params = set(required_template_params).issubset(
-            set(input_params_name)
-        )
-
+            return {'validation_result': 'failed', 'comment': 'Invalid param passed'}
+        all_required_params = set(required_template_params).issubset(set(input_params_name))
         if not all_required_params:
-            return {
-                "validation_result": "failed",
-                "comment": "Missing required params",
-            }
+            return {'validation_result': 'failed', 'comment': 'Missing required params'}
+        return {'validation_result': 'success', 'comment': 'Validation Passed'}
+    except Exception as err:
+        logger.error('An error occurred: %s', err, exc_info=True)
+        return {'validation_result': 'failed', 'comment': f'Error while running validation - {err!s}'}
 
-        return {"validation_result": "success", "comment": "Validation Passed"}
-    except Exception as err:  # pylint: disable=broad-exception-caught
-        logger.error("An error occurred: %s", err, exc_info=True)
-        return {
-            "validation_result": "failed",
-            "comment": f"Error while running validation - {err!s}",
-        }
-
-
-# UTILITY FUNCTION TO REPLICATE THE DATAPROC TEMPLATE DIRECTORY TO THE TEMP
-# DIRECTORY WITH THE UPDATED TEMPLATE CODE
-def update_dataproc_template(
-    run_id: str,
-    template_file_name: str,
-    template_dir: str,
-    transformation_sql: str,
-) -> str:
+def update_dataproc_template(run_id: str, template_file_name: str, template_dir: str, transformation_sql: str) -> str:
     """
     Creates a temporary, modified copy of a Dataproc template with transformation
     logic embedded.
@@ -320,44 +206,17 @@ def update_dataproc_template(
         str: Path to the root of the temporary Dataproc template repository that
         includes the modified template.
     """
-    template_path = (
-        f"{template_dir}/{template_file_name}"  # PATH OF THE TEMPLATE TO BE RUN
-    )
-
-    # PATH OF THE TEMP FOLDER FOR THE GIVEN JOB RUN WITH TRANSFORMATION
-    temp_template_repo_path = f"./{TEMP_DIR_PATH}/{run_id}/dataproc_template"
-    temp_template_path = template_path.replace(
-        f"./{TEMPLATE_REPO_PATH}", temp_template_repo_path
-    )  # PATH OF THE TEMPLATE TO BE RUN IN THE TEMP FOLDER
-
-    # COPY THE ORIGINAL TEMPLATE TO THE TEMP FOLDER
-    shutil.copytree(
-        f"./{TEMPLATE_REPO_PATH}", temp_template_repo_path, dirs_exist_ok=True
-    )
-
-    # READ THE ORIGINAL TEMPLATE
-    with open(template_path, encoding="utf-8") as f:
+    template_path = f'{template_dir}/{template_file_name}'
+    temp_template_repo_path = f'./{TEMP_DIR_PATH}/{run_id}/dataproc_template'
+    temp_template_path = template_path.replace(f'./{TEMPLATE_REPO_PATH}', temp_template_repo_path)
+    shutil.copytree(f'./{TEMPLATE_REPO_PATH}', temp_template_repo_path, dirs_exist_ok=True)
+    with open(template_path, encoding='utf-8') as f:
         original_template_code = f.read()
-
-    prompt = TRANSFORMATION_CODE_GENERATION_PROMPT.format(
-        original_template_code=original_template_code,
-        transformation_sql=transformation_sql,
-    )
-
-    model = GenerativeModel("gemini-2.0-flash")
+    prompt = TRANSFORMATION_CODE_GENERATION_PROMPT.format(original_template_code=original_template_code, transformation_sql=transformation_sql)
+    model = GenerativeModel('gemini-2.0-flash')
     response = model.generate_content(prompt)
     new_template_code = response.text
-
-    new_template_code = (
-        new_template_code.strip()
-        .replace("```python", "")
-        .replace("```java", "")
-        .replace("```", "")
-        .strip()
-    )  # CODE WITH THE ADDED LOGIC FOR TRANSFORMATION
-
-    # WRITING THE UPDATED TEMPLATE CODE TO THE TEMP DIRECTORY
-    with open(temp_template_path, "w", encoding="utf-8") as f:
+    new_template_code = new_template_code.strip().replace('```python', '').replace('```java', '').replace('```', '').strip()
+    with open(temp_template_path, 'w', encoding='utf-8') as f:
         f.write(new_template_code)
-
     return temp_template_repo_path

@@ -1,17 +1,27 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from google.adk.agents.context_cache_config import ContextCacheConfig
 import logging
 import os
-
 import plotly.express as px
 import plotly.graph_objects as go
 from google.adk.tools import ToolContext
 from google.genai import types
-
 logger = logging.getLogger(__name__)
 
-
-async def execute_visualization_code(
-    code: str, filename: str, tool_context: ToolContext = None
-):
+async def execute_visualization_code(code: str, filename: str, tool_context: ToolContext=None):
     """
     Executes Python code to generate a Plotly figure and saves it as an interactive HTML file.
 
@@ -25,63 +35,35 @@ async def execute_visualization_code(
         The path to the saved HTML file or an error message.
     """
     try:
-        # Create output directory if it doesn't exist
-        output_dir = "output"
+        output_dir = 'output'
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-
-        if not filename.endswith(".html"):
-            filename += ".html"
-
+        if not filename.endswith('.html'):
+            filename += '.html'
         filepath = os.path.join(output_dir, filename)
-
-        # Execution environment
         local_vars = {}
-        global_vars = {
-            "go": go,
-            "px": px,
-            "print": print,
-        }
-
-        # Execute the code
+        global_vars = {'go': go, 'px': px, 'print': print}
         try:
             exec(code, global_vars, local_vars)
         except Exception as exec_error:
-            return f"Error executing visualization code: {exec_error}"
-
-        # Extract 'fig'
-        fig = local_vars.get("fig")
+            return f'Error executing visualization code: {exec_error}'
+        fig = local_vars.get('fig')
         if not fig:
-            # Fallback: check globals if user messed up scope (less likely with exec but possible)
-            fig = global_vars.get("fig")
-
+            fig = global_vars.get('fig')
         if not fig:
             return "Error: The executed code did not define a variable named 'fig'."
-
-        if not isinstance(fig, (go.Figure)):
+        if not isinstance(fig, go.Figure):
             return f"Error: The variable 'fig' is not a plotly Figure. It is {type(fig)}."
-
-        # Save as self-contained HTML
-        fig.write_html(filepath, include_plotlyjs="cdn")
-
+        fig.write_html(filepath, include_plotlyjs='cdn')
         if tool_context:
             try:
-                with open(filepath, "rb") as f:
+                with open(filepath, 'rb') as f:
                     html_bytes = f.read()
-                # Create a simple artifact name from filename
-                artifact_name = filename.replace(".", "_").replace("-", "_")
-                await tool_context.save_artifact(
-                    artifact_name,
-                    types.Part(
-                        inline_data=types.Blob(
-                            mime_type="text/html", data=html_bytes
-                        )
-                    ),
-                )
-                logger.info(f"Successfully saved artifact {filename}")
+                artifact_name = filename.replace('.', '_').replace('-', '_')
+                await tool_context.save_artifact(artifact_name, types.Part(inline_data=types.Blob(mime_type='text/html', data=html_bytes)))
+                logger.info(f'Successfully saved artifact {filename}')
             except Exception as e:
-                logger.warning(f"Warning: Failed to save artifact: {e}")
-
-        return f"Interactive chart saved to {filename}"
+                logger.warning(f'Warning: Failed to save artifact: {e}')
+        return f'Interactive chart saved to {filename}'
     except Exception as e:
-        return f"Error processing visualization: {e!s}"
+        return f'Error processing visualization: {e!s}'

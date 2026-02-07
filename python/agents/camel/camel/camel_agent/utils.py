@@ -13,54 +13,35 @@
 # limitations under the License.
 
 """Utils for CaMeL agent implementation."""
-
 from collections.abc import Iterable
-
 from google.genai import types
-
 from ..camel_library import function_types
-
 FunctionCall = function_types.FunctionCall
-
 MAX_RESPONSE_LENGTH = 256
 MAX_RESULT_LENGTH = 1024
-
 
 def sanitized_part(part: types.Part) -> str:
     """Returns a sanitized string representation of expected response parts."""
     if part.thought and part.text:
-        return f"<thought>{part.text}</thought>\n"
+        return f'<thought>{part.text}</thought>\n'
     if part.text:
         return part.text
     if part.function_call:
-        return f"FunctionCall({part.function_call})"
+        return f'FunctionCall({part.function_call})'
     if part.function_response:
         response_string = str(part.function_response)
-        return (
-            f"FunctionResponse({response_string[:MAX_RESPONSE_LENGTH]}"
-            f"{'...' if len(response_string) > MAX_RESPONSE_LENGTH else ''})"
-        )
+        return f"FunctionResponse({response_string[:MAX_RESPONSE_LENGTH]}{('...' if len(response_string) > MAX_RESPONSE_LENGTH else '')})"
     if part.executable_code:
-        return f"ExecutableCode:\n```{part.executable_code.language}\n{part.executable_code.code}\n```"
+        return f'ExecutableCode:\n```{part.executable_code.language}\n{part.executable_code.code}\n```'
     if part.code_execution_result:
-        result_string = (
-            f"outcome={part.code_execution_result.outcome},"
-            f" output={part.code_execution_result.output}"
-        )
-        return (
-            f"CodeExecutionResult({result_string[:MAX_RESULT_LENGTH]}"
-            f"{'...' if len(result_string) > MAX_RESULT_LENGTH else ''})"
-        )
-    return ""
+        result_string = f'outcome={part.code_execution_result.outcome}, output={part.code_execution_result.output}'
+        return f"CodeExecutionResult({result_string[:MAX_RESULT_LENGTH]}{('...' if len(result_string) > MAX_RESULT_LENGTH else '')})"
+    return ''
 
-
-def extract_print_output(
-    tool_calls: Iterable[FunctionCall],
-) -> str:
+def extract_print_output(tool_calls: Iterable[FunctionCall]) -> str:
     """Extracts and concatenates arguments from print calls."""
-
-    printed_output = ""
-    print_calls = [tc for tc in tool_calls if tc.function == "print"]
+    printed_output = ''
+    print_calls = [tc for tc in tool_calls if tc.function == 'print']
     for print_call in print_calls:
         for arg_value in print_call.args.values():
             printed_output += str(arg_value)

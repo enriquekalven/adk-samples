@@ -1,32 +1,17 @@
-"""Defines the prompts for the submission agent."""
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-ADD_TEST_FINAL_INSTR = """# Introduction
-- You are a Kaggle grandmaster attending a competition.
-- In order to win this competition, you need to come up with an excellent solution in Python.
-- We will now provide a task description and a Python solution.
-- What you have to do on the solution is just loading test samples and create a submission file.
-
-# Task description
-{task_description}
-
-# Python solution
-```python
-{code}
-```
-
-# Your task
-- Load the test samples and create a submission file.
-- All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
-- Test data is available in the `./input` directory.
-- Save the test predictions in a `submission.csv` file. Put the `submission.csv` into `./final` directory.
-- You should not drop any test samples. Predict the target value for all test samples.
-- This is a very easy task because the only thing to do is to load test samples and then replace the validation samples with the test samples. Then you can even use the full training set!
-
-# Required
-- Do not modify the given Python solution code too much. Try to integarte test submission with minimal changes.
-- There should be no additional headings or text in your response.
-- The code should be a single-file Python program that is self-contained and can be executed as-is.
-- Your response should only contain a single code block.
-- Do not forget the ./final/submission.csv file.
-- Do not use exit() function in the Python code.
-- Do not use try: and except: or if else to ignore unintended behavior."""
+from google.adk.agents.context_cache_config import ContextCacheConfig
+'Defines the prompts for the submission agent.'
+ADD_TEST_FINAL_INSTR = '# Introduction\n- You are a Kaggle grandmaster attending a competition.\n- In order to win this competition, you need to come up with an excellent solution in Python.\n- We will now provide a task description and a Python solution.\n- What you have to do on the solution is just loading test samples and create a submission file.\n\n# Task description\n{task_description}\n\n# Python solution\n```python\n{code}\n```\n\n# Your task\n- Load the test samples and create a submission file.\n- All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.\n- Test data is available in the `./input` directory.\n- Save the test predictions in a `submission.csv` file. Put the `submission.csv` into `./final` directory.\n- You should not drop any test samples. Predict the target value for all test samples.\n- This is a very easy task because the only thing to do is to load test samples and then replace the validation samples with the test samples. Then you can even use the full training set!\n\n# Required\n- Do not modify the given Python solution code too much. Try to integarte test submission with minimal changes.\n- There should be no additional headings or text in your response.\n- The code should be a single-file Python program that is self-contained and can be executed as-is.\n- Your response should only contain a single code block.\n- Do not forget the ./final/submission.csv file.\n- Do not use exit() function in the Python code.\n- Do not use try: and except: or if else to ignore unintended behavior.'

@@ -12,20 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines tools for brand search optimization agent"""
-
+from google.adk.agents.context_cache_config import ContextCacheConfig
+'Defines tools for brand search optimization agent'
 from google.adk.tools import ToolContext
 from google.cloud import bigquery
-
 from ..shared_libraries import constants
-
-# Initialize the BigQuery client outside the function
 try:
-    client = bigquery.Client()  # Initialize client once
+    client = bigquery.Client()
 except Exception as e:
-    print(f"Error initializing BigQuery client: {e}")
-    client = None  # Set client to None if initialization fails
-
+    print(f'Error initializing BigQuery client: {e}')
+    client = None
 
 def get_product_details_for_brand(tool_context: ToolContext):
     """
@@ -44,40 +40,18 @@ def get_product_details_for_brand(tool_context: ToolContext):
         '| Title | Description | Attributes | Brand |\\n|---|---|---|---|\\n| Nike Air Max | Comfortable running shoes | Size: 10, Color: Blue | Nike\\n| Nike Sportswear T-Shirt | Cotton blend, short sleeve | Size: L, Color: Black | Nike\\n| Nike Pro Training Shorts | Moisture-wicking fabric | Size: M, Color: Gray | Nike\\n'
     """
     brand = tool_context.user_content.parts[0].text
-    if client is None:  # Check if client initialization failed
-        return "BigQuery client initialization failed. Cannot execute query."
-
-    query = f"""
-        SELECT
-            Title,
-            Description,
-            Attributes,
-            Brand
-        FROM
-            {constants.PROJECT}.{constants.DATASET_ID}.{constants.TABLE_ID}
-        WHERE brand LIKE '%{brand}%'
-        LIMIT 3
-    """
-    query_job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("parameter1", "STRING", brand)
-        ]
-    )
-
+    if client is None:
+        return 'BigQuery client initialization failed. Cannot execute query.'
+    query = f"\n        SELECT\n            Title,\n            Description,\n            Attributes,\n            Brand\n        FROM\n            {constants.PROJECT}.{constants.DATASET_ID}.{constants.TABLE_ID}\n        WHERE brand LIKE '%{brand}%'\n        LIMIT 3\n    "
+    query_job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter('parameter1', 'STRING', brand)])
     query_job = client.query(query, job_config=query_job_config)
     query_job = client.query(query)
     results = query_job.result()
-
-    markdown_table = "| Title | Description | Attributes | Brand |\n"
-    markdown_table += "|---|---|---|---|\n"
-
+    markdown_table = '| Title | Description | Attributes | Brand |\n'
+    markdown_table += '|---|---|---|---|\n'
     for row in results:
         title = row.Title
-        description = row.Description if row.Description else "N/A"
-        attributes = row.Attributes if row.Attributes else "N/A"
-
-        markdown_table += (
-            f"| {title} | {description} | {attributes} | {brand}\n"
-        )
-
+        description = row.Description if row.Description else 'N/A'
+        attributes = row.Attributes if row.Attributes else 'N/A'
+        markdown_table += f'| {title} | {description} | {attributes} | {brand}\n'
     return markdown_table

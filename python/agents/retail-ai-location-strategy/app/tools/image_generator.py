@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,38 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemini image generation tool for creating infographics.
-
-Uses Google AI Studio (API key) for authentication.
-Uses gemini-3-pro-image-preview model for image generation.
-Requires GOOGLE_API_KEY environment variable to be set.
-
-Saves the generated infographic directly as an artifact using tool_context.save_artifact()
-so it's accessible in adk web UI.
-"""
-
+from google.adk.agents.context_cache_config import ContextCacheConfig
+"Gemini image generation tool for creating infographics.\n\nUses Google AI Studio (API key) for authentication.\nUses gemini-3-pro-image-preview model for image generation.\nRequires GOOGLE_API_KEY environment variable to be set.\n\nSaves the generated infographic directly as an artifact using tool_context.save_artifact()\nso it's accessible in adk web UI.\n"
 import base64
 import logging
-
 from google import genai
 from google.adk.tools import ToolContext
 from google.genai import types
 from google.genai.errors import ServerError
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from ..config import IMAGE_MODEL
+logger = logging.getLogger('LocationStrategyPipeline')
 
-logger = logging.getLogger("LocationStrategyPipeline")
-
-
-async def generate_infographic(
-    data_summary: str, tool_context: ToolContext
-) -> dict:
+async def generate_infographic(data_summary: str, tool_context: ToolContext) -> dict:
     """Generate an infographic image using Gemini's image generation capabilities.
 
     This tool creates a professional infographic visualizing the location
@@ -68,114 +49,30 @@ async def generate_infographic(
             - error_message: Error details (if failed)
     """
     try:
-        # Initialize Gemini client using AI Studio (not Vertex AI)
-        # This uses GOOGLE_API_KEY from environment automatically
         client = genai.Client()
+        prompt = f'Generate a professional business infographic for a location intelligence report.\n\nDATA TO VISUALIZE:\n{data_summary}\n\nDESIGN REQUIREMENTS:\n- Professional, clean business style\n- Use a blue and green color palette\n- Include clear visual hierarchy\n- Show key metrics prominently\n- Include icons or simple graphics for each section\n- Make it suitable for executive presentations\n- 16:9 aspect ratio for presentations\n\nCreate an infographic that a business executive would use in a board presentation.\n'
 
-        # Create the prompt for infographic generation
-        prompt = f"""Generate a professional business infographic for a location intelligence report.
-
-DATA TO VISUALIZE:
-{data_summary}
-
-DESIGN REQUIREMENTS:
-- Professional, clean business style
-- Use a blue and green color palette
-- Include clear visual hierarchy
-- Show key metrics prominently
-- Include icons or simple graphics for each section
-- Make it suitable for executive presentations
-- 16:9 aspect ratio for presentations
-
-Create an infographic that a business executive would use in a board presentation.
-"""
-
-        # Retry wrapper for handling model overload errors
-        @retry(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=2, min=2, max=30),
-            retry=retry_if_exception_type(ServerError),
-            before_sleep=lambda retry_state: logger.warning(
-                f"Gemini API error, retrying in {retry_state.next_action.sleep} seconds... "
-                f"(attempt {retry_state.attempt_number}/3)"
-            ),
-        )
+        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=30), retry=retry_if_exception_type(ServerError), before_sleep=lambda retry_state: logger.warning(f'Gemini API error, retrying in {retry_state.next_action.sleep} seconds... (attempt {retry_state.attempt_number}/3)'))
         def generate_with_retry():
-            return client.models.generate_content(
-                model=IMAGE_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio="16:9",
-                    ),
-                ),
-            )
-
-        # Generate the image using Gemini 3 Pro Image model
+            return client.models.generate_content(model=IMAGE_MODEL, contents=prompt, config=types.GenerateContentConfig(response_modalities=['TEXT', 'IMAGE'], image_config=types.ImageConfig(aspect_ratio='16:9')))
         response = generate_with_retry()
-
-        # Check for successful generation
         if response.candidates and len(response.candidates) > 0:
             for part in response.candidates[0].content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
+                if hasattr(part, 'inline_data') and part.inline_data:
                     image_bytes = part.inline_data.data
-                    mime_type = part.inline_data.mime_type or "image/png"
-
-                    # Save the image directly as an artifact using tool_context
-                    # This is the recommended ADK pattern for saving binary artifacts
-                    # Note: save_artifact is async, so we must await it
+                    mime_type = part.inline_data.mime_type or 'image/png'
                     try:
-                        image_artifact = types.Part.from_bytes(
-                            data=image_bytes, mime_type=mime_type
-                        )
-                        artifact_filename = "infographic.png"
-                        version = await tool_context.save_artifact(
-                            filename=artifact_filename, artifact=image_artifact
-                        )
-                        logger.info(
-                            f"Saved infographic artifact: {artifact_filename} (version {version})"
-                        )
-
-                        # Also store base64 in state for AG-UI frontend display
-                        b64_image = base64.b64encode(image_bytes).decode(
-                            "utf-8"
-                        )
-                        tool_context.state["infographic_base64"] = (
-                            f"data:{mime_type};base64,{b64_image}"
-                        )
-
-                        return {
-                            "status": "success",
-                            "message": f"Infographic generated and saved as artifact '{artifact_filename}'",
-                            "artifact_saved": True,
-                            "artifact_filename": artifact_filename,
-                            "artifact_version": version,
-                            "mime_type": mime_type,
-                        }
+                        image_artifact = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+                        artifact_filename = 'infographic.png'
+                        version = await tool_context.save_artifact(filename=artifact_filename, artifact=image_artifact)
+                        logger.info(f'Saved infographic artifact: {artifact_filename} (version {version})')
+                        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        tool_context.state['infographic_base64'] = f'data:{mime_type};base64,{b64_image}'
+                        return {'status': 'success', 'message': f"Infographic generated and saved as artifact '{artifact_filename}'", 'artifact_saved': True, 'artifact_filename': artifact_filename, 'artifact_version': version, 'mime_type': mime_type}
                     except Exception as save_error:
-                        logger.warning(f"Failed to save artifact: {save_error}")
-                        # Still return success with base64 data as fallback
-                        return {
-                            "status": "success",
-                            "message": "Infographic generated but artifact save failed",
-                            "artifact_saved": False,
-                            "image_data": base64.b64encode(image_bytes).decode(
-                                "utf-8"
-                            ),
-                            "mime_type": mime_type,
-                            "save_error": str(save_error),
-                        }
-
-        # No image found in response
-        return {
-            "status": "error",
-            "error_message": "No image was generated in the response. The model may have returned text only.",
-        }
-
+                        logger.warning(f'Failed to save artifact: {save_error}')
+                        return {'status': 'success', 'message': 'Infographic generated but artifact save failed', 'artifact_saved': False, 'image_data': base64.b64encode(image_bytes).decode('utf-8'), 'mime_type': mime_type, 'save_error': str(save_error)}
+        return {'status': 'error', 'error_message': 'No image was generated in the response. The model may have returned text only.'}
     except Exception as e:
-        logger.error(f"Failed to generate infographic: {e}")
-        return {
-            "status": "error",
-            "error_message": f"Failed to generate infographic: {e!s}",
-        }
+        logger.error(f'Failed to generate infographic: {e}')
+        return {'status': 'error', 'error_message': f'Failed to generate infographic: {e!s}'}

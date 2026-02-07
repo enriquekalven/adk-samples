@@ -1,36 +1,18 @@
-"""Defines the prompts for data leakage checker."""
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-CHECK_LEAKAGE_INSTR = """# Python code
-```python
-{code}
-```
-
-# Your task
-- Extract the code block where the validation and test samples are preprocessed using training samples.
-- Check that the model is trained with only training samples.
-- Check that before printing the final validation score, the model is not trained the validation samples.
-- Also check whether the validation and test samples are preprocessed correctly, preventing information from the validation or test samples from influencing the training process (i.e., preventing data leakage).
-
-# Requirement
-- If data leakage is present on validation and test samples, answer 'Yes Data Leakage'.
-- If data leakage is not present on validation and test samples, answer 'No Data Leakage'.
-
-Use this JSON schema:
-Answer = {{'leakage_status': str, 'code_block': str}}
-Return: list[Answer]
-"""
-
-LEAKAGE_REFINE_INSTR = """# Python code
-```python
-{code}
-```
-
-# Your task
-- In the above Python code, the validation and test samples are influencing the training process, i.e., not correctly preprocessed.
-- Ensure that the model is trained with only training samples.
-- Ensure that before printing the final validation score, the model is not trained on the validation samples.
-- Refine the code to prevent such data leakage problem.
-
-# Requirement
-- Your response should be a single markdown code block.
-- Note that all the variables are defined earlier. Just modify it with the above code."""
+from google.adk.agents.context_cache_config import ContextCacheConfig
+'Defines the prompts for data leakage checker.'
+CHECK_LEAKAGE_INSTR = "# Python code\n```python\n{code}\n```\n\n# Your task\n- Extract the code block where the validation and test samples are preprocessed using training samples.\n- Check that the model is trained with only training samples.\n- Check that before printing the final validation score, the model is not trained the validation samples.\n- Also check whether the validation and test samples are preprocessed correctly, preventing information from the validation or test samples from influencing the training process (i.e., preventing data leakage).\n\n# Requirement\n- If data leakage is present on validation and test samples, answer 'Yes Data Leakage'.\n- If data leakage is not present on validation and test samples, answer 'No Data Leakage'.\n\nUse this JSON schema:\nAnswer = {{'leakage_status': str, 'code_block': str}}\nReturn: list[Answer]\n"
+LEAKAGE_REFINE_INSTR = '# Python code\n```python\n{code}\n```\n\n# Your task\n- In the above Python code, the validation and test samples are influencing the training process, i.e., not correctly preprocessed.\n- Ensure that the model is trained with only training samples.\n- Ensure that before printing the final validation score, the model is not trained on the validation samples.\n- Refine the code to prevent such data leakage problem.\n\n# Requirement\n- Your response should be a single markdown code block.\n- Note that all the variables are defined earlier. Just modify it with the above code.'

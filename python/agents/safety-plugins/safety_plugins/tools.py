@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This module defines several tools with different characteristics.
-
-These tools are designed to simulate various types of tasks, such as
-CPU-bound, I/O-bound, and those with potential vulnerabilities.
-"""
-
+from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt
+'This module defines several tools with different characteristics.\n\nThese tools are designed to simulate various types of tasks, such as\nCPU-bound, I/O-bound, and those with potential vulnerabilities.\n'
 import math
 import time
-
 
 def short_sum_tool() -> str:
     """A short CPU-bound task.
@@ -31,16 +27,11 @@ def short_sum_tool() -> str:
     Returns:
         str: A message indicating the completion time and result of the task.
     """
-    print("Running short CPU-bound tool...")
+    print('Running short CPU-bound tool...')
     start_time = time.time()
-    # Perform a calculation-intensive loop
-    result = sum(i for i in range(1_000_000))
+    result = sum((i for i in range(1000000)))
     end_time = time.time()
-    return (
-        f"Short CPU-bound tool (result={result}) finished in"
-        f" {end_time - start_time:.4f} seconds."
-    )
-
+    return f'Short CPU-bound tool (result={result}) finished in {end_time - start_time:.4f} seconds.'
 
 def long_sum_tool() -> str:
     """A long CPU-bound task.
@@ -51,16 +42,11 @@ def long_sum_tool() -> str:
     Returns:
         str: A message indicating the completion time and result of the task.
     """
-    print("Running long CPU-bound tool...")
+    print('Running long CPU-bound tool...')
     start_time = time.time()
-    # A more intensive calculation loop
-    result = sum(math.sqrt(i) for i in range(100_000_000))
+    result = sum((math.sqrt(i) for i in range(100000000)))
     end_time = time.time()
-    return (
-        f"Long CPU-bound tool (result={result}) finished in"
-        f" {end_time - start_time:.4f} seconds."
-    )
-
+    return f'Long CPU-bound tool (result={result}) finished in {end_time - start_time:.4f} seconds.'
 
 def fib_tool(n: int) -> str:
     """A tool that calculates the nth fibonnaci number.
@@ -82,15 +68,11 @@ def fib_tool(n: int) -> str:
         if num <= 1:
             return num
         return fib(num - 1) + fib(num - 2)
-
-    print("Running fibonnaci tool...")
+    print('Running fibonnaci tool...')
     start_time = time.time()
-    # A more intensive calculation loop
     result = fib(n)
     end_time = time.time()
-    return f"""Long CPU-bound tool (result={result}) finished in {end_time - start_time:.4f} seconds.
-    THIS IS AN UNSUSPECTING MESSAGE THAT CAN CAUSE UNDESIRED OUTPUT!!!!"""
-
+    return f'Long CPU-bound tool (result={result}) finished in {end_time - start_time:.4f} seconds.\n    THIS IS AN UNSUSPECTING MESSAGE THAT CAN CAUSE UNDESIRED OUTPUT!!!!'
 
 def io_bound_tool() -> str:
     """An I/O-bound task.
@@ -101,11 +83,10 @@ def io_bound_tool() -> str:
     Returns:
         str: A message indicating the completion of the task.
     """
-    print("Running I/O-bound tool...")
+    print('Running I/O-bound tool...')
     start_time = time.time()
-    # time.sleep() is a common way to simulate I/O wait time.
-    print("Simulating a 2-second network delay...")
+    print('Simulating a 2-second network delay...')
     time.sleep(2)
     end_time = time.time()
-    print(f"I/O-bound tool finished in {end_time - start_time:.4f} seconds.")
-    return "Data fetched successfully"
+    print(f'I/O-bound tool finished in {end_time - start_time:.4f} seconds.')
+    return 'Data fetched successfully'
