@@ -55,9 +55,9 @@ class CodeRemediator:
                 content = content.replace("def call_llm", "@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))\ndef call_llm")
                 modified = True
             
-            # 4. Strategic Pivot: Gemini 2.0 Upgrade
-            if "gemini-1.5" in content:
-                content = content.replace("gemini-1.5", "gemini-2.0")
+            # 4. Strategic Pivot: Gemini 2.5 Upgrade
+            if "gemini-1.5" in content or "gemini-2.0" in content:
+                content = content.replace("gemini-1.5", "gemini-2.5").replace("gemini-2.0", "gemini-2.5")
                 modified = True
                 
             if modified:

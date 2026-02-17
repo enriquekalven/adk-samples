@@ -9,7 +9,8 @@ def agent_file_to_fix(tmp_path):
 from google.adk.apps.app import App
 
 def call_llm(query):
-    # This function needs a retry decorator
+    # This legacy model needs a strategic pivot
+    model = "gemini-1.5-flash"
     pass
 
 app = App(name="legacy_app")
@@ -37,6 +38,9 @@ def test_code_remediator_applies_fixes(agent_file_to_fix):
     # Check if imports were added
     assert "from tenacity import retry" in new_content
     assert "from google.adk.agents.context_cache_config import ContextCacheConfig" in new_content
+    # Check for Strategic Pivot to 2.5
+    assert "gemini-2.5-flash" in new_content
+    assert "gemini-1.5" not in new_content
 
 def test_remediator_skips_fixed_files(tmp_path):
     """Ensure it doesn't double-remediate."""
