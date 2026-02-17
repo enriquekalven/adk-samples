@@ -48,3 +48,7 @@ indent-style = "space"
 quote-style = "double"
 skip-magic-trailing-comma = false
 docstring-code-format = true
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

@@ -14,17 +14,17 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Severity(str, Enum):
+class Severity(str, StrEnum):
     BLOCKER = "BLOCKER"
     WARNING = "WARNING"
 
 
-class Category(str, Enum):
+class Category(str, StrEnum):
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
 

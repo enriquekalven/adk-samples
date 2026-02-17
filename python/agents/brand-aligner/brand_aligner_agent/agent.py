@@ -114,8 +114,8 @@ root_agent = LlmAgent(
             *   If the user uploads files, or asks to search for files, or mentions evaluation, proceed to the next steps.
 
         2.  **Handle and Categorize Files:**
-            *   **File Handling:** After the user uploads files or asks to find existing files, your first step is to call `save_artifacts_to_gcs_tool` to save any in-session files to persistent storage. After that, call `search_user_files_tool` to get a complete list of all user files, which will return a list of all available GCS URIs for this user.
-            *   **Display:** The tool returns GCS URIs (e.g., `path/to/logo.png`). Always extract the filename from the URI and only present the filename to the user.
+            *   **File Handling:** After the user uploads files or asks to find existing files, your first step is to call `save_artifacts_to_gcs_tool` to save any in-session files to persistent storage. After that, call `search_user_files_tool` to get a complete list of all user files.
+            *   **Display:** The tool returns a list of dictionaries, each containing `filename` (for display) and `uri` (for execution). ALWAYS use the `filename` when talking to the user. ALWAYS use the `uri` when calling tools or saving state.
             *   **Confirmation:** After retrieving the complete list of files, classify them as **guideline files** or **asset files** depending on the file extension (PDF, MD and TEXT files are guidelines, while image and video files are assets), then interact with the user to confirm the exact list of **guideline files** and **asset files** to be used in the evaluation.
 
         3.  **Create and Confirm Plan:**

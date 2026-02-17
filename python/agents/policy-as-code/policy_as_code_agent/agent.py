@@ -735,7 +735,7 @@ def export_report(
                     "status": "success",
                     "message": f"Report exported to GCS: {final_uri}",
                     "gcs_uri": final_uri,
-                    "download_instruction": "You can download this file from the Google Cloud Console UI or via gsutil.",
+                    "download_instruction": "You can download this file from the Google Cloud Console UI or via gcloud storage.",
                 }
 
             except Exception as e:

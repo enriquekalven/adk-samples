@@ -59,7 +59,7 @@ default_jailbreak_safety_agent = LlmAgent(
 default_safety_analysis_parser = lambda analysis: "UNSAFE" in analysis  # noqa: E731
 
 
-class JudgeOn(str, enum.Enum):
+class JudgeOn(enum.StrEnum):
     """Enum for the different callbacks to run the judge on."""
 
     USER_MESSAGE = "user_message"

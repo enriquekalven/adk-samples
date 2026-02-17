@@ -135,12 +135,12 @@ async def save_plan_to_state_tool(
     guideline_files: list[str],
     asset_files: list[str],
     tool_context: ToolContext,
-    additional_guidance: str | None = None,
+    additional_guidance: str = "",
 ) -> str:
     """Saves the evaluation plan to the session state."""
     tool_context.state["guideline_files"] = guideline_files
     tool_context.state["asset_files"] = asset_files
-    tool_context.state["additional_guidance"] = additional_guidance or ""
+    tool_context.state["additional_guidance"] = additional_guidance
     logger.info(
         "Saved plan to state: %d guidelines, %d assets.",
         len(guideline_files),
@@ -262,7 +262,7 @@ async def save_artifacts_to_gcs_tool(tool_context: ToolContext) -> str:
 
 async def search_user_files_tool(
     tool_context: ToolContext,
-) -> dict[str, list[str]]:
+) -> dict[str, list[dict[str, str]]]:
     """Lists all available files for the current user."""
     continue_processing, user_id = _get_user_id(tool_context)
     if not continue_processing:
@@ -272,7 +272,7 @@ async def search_user_files_tool(
     logger.info("Searching for files in GCS with prefix: %s", prefix)
     blobs = storage_client.list_blobs(GCS_BUCKET, prefix=prefix, delimiter="/")
     files = [
-        blob.name
+        {"filename": os.path.basename(blob.name), "uri": blob.name}
         for blob in blobs
         if not blob.name.endswith("/")
         and not blob.name.startswith(f"{prefix}processed_guideline_")

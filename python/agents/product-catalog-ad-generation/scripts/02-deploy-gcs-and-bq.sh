@@ -54,10 +54,10 @@ echo "🚀 Starting GCS bucket and BigQuery deployment for project ${PROJECT_ID}
 
 # --- GCS Bucket Creation ---
 echo "📦 Creating GCS Bucket for Static Content..."
-if gsutil ls -b "gs://${STATIC_CONTENT_BUCKET}" &> /dev/null; then
+if gcloud storage ls --buckets "gs://${STATIC_CONTENT_BUCKET}" &> /dev/null; then
     echo "   -> Bucket gs://${STATIC_CONTENT_BUCKET} already exists."
 else
-    gsutil mb -p "${PROJECT_ID}" -l "${REGION}" "gs://${STATIC_CONTENT_BUCKET}"
+    gcloud storage buckets create "gs://${STATIC_CONTENT_BUCKET}" --project="${PROJECT_ID}" --location="${REGION}"
     echo "   -> Bucket gs://${STATIC_CONTENT_BUCKET} created."
 fi
 echo "✅ GCS bucket is ready."
@@ -75,22 +75,22 @@ upload_with_confirmation() {
   local dest_bucket_path="gs://${STATIC_CONTENT_BUCKET}/${dest_folder}/"
 
   echo "📤 Checking for existing content in ${dest_folder}..."
-  if gsutil ls "${dest_bucket_path}" | grep -q '.'; then
+  if gcloud storage ls "${dest_bucket_path}" | grep -q '.'; then
     echo "   -> Folder ${dest_bucket_path} already contains files."
     read -p "   -> Do you want to clear the folder and re-upload from ${source_dir}? (y/n) " -n 1 -r
     echo # Move to a new line
     if [[ $REPLY =~ ^[Yy]$ ]]; then
       echo "   -> Clearing existing content from ${dest_folder} folder..."
-      gsutil -m rm "${dest_bucket_path}**"
+      gcloud storage rm "${dest_bucket_path}**"
       echo "   -> Uploading new content..."
-      gsutil -m cp -r "${source_dir}"/* "${dest_bucket_path}"
+      gcloud storage cp --recursive "${source_dir}"/* "${dest_bucket_path}"
       echo "   -> Upload complete."
     else
       echo "   -> Skipping upload."
     fi
   else
     echo "   -> Folder is empty. Uploading content from ${source_dir}..."
-    gsutil -m cp -r "${source_dir}"/* "${dest_bucket_path}"
+    gcloud storage cp --recursive "${source_dir}"/* "${dest_bucket_path}"
     echo "   -> Upload complete."
   fi
   echo

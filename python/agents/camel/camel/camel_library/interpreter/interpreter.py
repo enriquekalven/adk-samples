@@ -108,7 +108,7 @@ class EvalResult(NamedTuple):
     dependencies: Iterable[camel_value.Value[Any]]
 
 
-class DependenciesPropagationMode(str, enum.Enum):
+class DependenciesPropagationMode(enum.StrEnum):
     """Mode of evaluation for the interpreter.
 
     `STRICT` mode will propagate capabilities in a more conservative way.
