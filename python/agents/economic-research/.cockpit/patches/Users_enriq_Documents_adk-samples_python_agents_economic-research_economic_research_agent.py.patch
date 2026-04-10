@@ -1,0 +1,12 @@
+--- a//Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py
++++ b//Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py
+@@ -36,6 +36,9 @@
+ from economic_research.tools.trade_skill import fetch_regional_trade_data
+ 
+ from .prompt import Prompts
++def decider_should_rag(query: str) -> bool:
++    '''Fast semantic routing to avoid RAG inference waste.'''
++    return 'report' in query or 'data' in query
+ 
+ load_dotenv()
+ 

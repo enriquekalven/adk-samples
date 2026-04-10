@@ -1,0 +1,104 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "AgentOps Cockpit"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "policy_blindness:_implicit_governance",
+          "message": {
+            "text": "Generic best practice upgrade recommended for 5 files (/Users/enriq/Documents/adk-samples/python/agents/economic-research/mcp_server.py, /Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/tools/lifestyle_logistics_incentives_skills.py...)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Core Enhancements"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "blocking_inference:_streaming_output_recommended",
+          "message": {
+            "text": "Generic best practice upgrade recommended for 7 files (/Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py, /Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/prompt.py...)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Core Enhancements"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "passive_retrieval:_context_drowning",
+          "message": {
+            "text": "Structural Enhancement."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py:1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "policy_blindness:_implicit_governance",
+          "message": {
+            "text": "Generic best practice upgrade recommended for 5 files (/Users/enriq/Documents/adk-samples/python/agents/economic-research/mcp_server.py, /Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/tools/lifestyle_logistics_incentives_skills.py...)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Core Enhancements"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "blocking_inference:_streaming_output_recommended",
+          "message": {
+            "text": "Generic best practice upgrade recommended for 7 files (/Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py, /Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/prompt.py...)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Core Enhancements"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "passive_retrieval:_context_drowning",
+          "message": {
+            "text": "Structural Enhancement."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/Users/enriq/Documents/adk-samples/python/agents/economic-research/economic_research/agent.py:1"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
