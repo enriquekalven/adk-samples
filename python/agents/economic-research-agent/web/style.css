@@ -1,15 +1,15 @@
 /* CSS Reset and Variables */
 :root {
-  --bg-primary: #121211;
-  --bg-secondary: #1a1a19;
-  --bg-glass: rgba(26, 26, 25, 0.7);
-  --text-primary: #f5f4f0;
-  --text-secondary: #b3b2ad;
-  --accent-blue: #38bdf8;
-  --accent-purple: #a855f7;
-  --gemini-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #d946ef 100%);
-  --border-color: #2b2b29;
-  --border-glow: rgba(139, 92, 246, 0.15);
+  --bg-primary: #fbfaf7;
+  --bg-secondary: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --text-primary: #191919;
+  --text-secondary: #666560;
+  --accent-blue: #1d4ed8;
+  --accent-purple: #7c3aed;
+  --gemini-gradient: linear-gradient(135deg, #1d4ed8 0%, #7c3aed 50%, #db2777 100%);
+  --border-color: #e5e3dd;
+  --border-glow: rgba(124, 58, 237, 0.08);
   
   --font-serif: "Georgia", Times, serif;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
@@ -45,7 +45,7 @@ header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: rgba(18, 18, 17, 0.85);
+  background-color: rgba(251, 250, 247, 0.85);
 }
 
 .header-inner {
@@ -185,14 +185,14 @@ header {
 .lab-btn:hover {
   border-color: var(--accent-purple);
   color: var(--text-primary);
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 .lab-btn.active {
   border-color: var(--accent-blue);
   color: var(--text-primary);
-  background: linear-gradient(90deg, rgba(56, 189, 248, 0.08) 0%, rgba(0,0,0,0) 100%);
-  box-shadow: 0 0 15px rgba(56, 189, 248, 0.05);
+  background: linear-gradient(90deg, rgba(29, 78, 216, 0.05) 0%, rgba(0,0,0,0) 100%);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.02);
 }
 
 .lab-btn-title {
@@ -207,19 +207,20 @@ header {
 
 /* Console Window */
 .console-window {
-  background-color: var(--bg-secondary);
+  background-color: #f7f6f0;
   border: 1px solid var(--border-color);
+  color: var(--text-primary);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   height: 600px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
   position: relative;
 }
 
 .console-header {
-  background-color: #161615;
+  background-color: #efede8;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -268,7 +269,7 @@ header {
 }
 
 .query-input-box {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: #ffffff;
   border: 1px solid var(--border-color);
   padding: 1rem;
   border-radius: 8px;
@@ -349,13 +350,13 @@ header {
 }
 
 .result-markdown {
-  background-color: rgba(255, 255, 255, 0.01);
+  background-color: #ffffff;
   border: 1px solid var(--border-color);
   padding: 1.5rem;
   border-radius: 8px;
   font-family: var(--font-serif);
   font-size: 1.05rem;
-  color: #e2e1db;
+  color: var(--text-primary);
   overflow-x: auto;
 }
 
@@ -372,7 +373,7 @@ header {
 }
 
 .result-markdown th {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: #f7f6f0;
   font-weight: 600;
   font-family: var(--font-sans);
   font-size: 0.9rem;
@@ -410,7 +411,7 @@ header {
 }
 
 .info-card {
-  background-color: rgba(26, 26, 25, 0.4);
+  background-color: #ffffff;
   border: 1px solid var(--border-color);
   padding: 2rem;
   border-radius: 10px;
@@ -419,7 +420,7 @@ header {
 
 .info-card:hover {
   border-color: var(--accent-purple);
-  box-shadow: 0 10px 30px rgba(139, 92, 246, 0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
 }
 
 .info-card h4 {

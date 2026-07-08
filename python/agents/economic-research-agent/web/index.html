@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Google Economic Futures & Agentic Research</title>
+  <title>Economic Research & Agentic Evaluation</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,12 +16,13 @@
     <div class="container header-inner">
       <div class="logo">
         <div class="logo-icon"></div>
-        <span>Google Economic Futures</span>
+        <span>Economic Research</span>
       </div>
       <nav class="nav-links">
         <a href="#lab">Sourcing Lab</a>
-        <a href="#prim">Economic Primitives</a>
-        <a href="https://github.com/google/adk-samples" target="_blank">ADK Standard</a>
+        <a href="#skills">Standalone Skills</a>
+        <a href="https://github.com/google/agent-garden" target="_blank">Agent Garden</a>
+        <a href="https://github.com/google/adk-samples" target="_blank">ADK Samples</a>
       </nav>
     </div>
   </header>
@@ -31,7 +32,7 @@
     <div class="container">
       <div class="hero-subtitle">Agentic Economic Research</div>
       <h1>Reshaping the Economy through Agentic Sourcing & Evaluation</h1>
-      <p>The Google Economic Futures team studies how AI and autonomous agents reshape industries, real estate yields, and regional labor markets. We build empirical primitives that move beyond speculation to track economic transitions in real time.</p>
+      <p>The Economic Research team studies how AI and autonomous agents reshape industries, real estate yields, and regional labor markets. We build empirical primitives that move beyond speculation to track economic transitions in real time.</p>
     </div>
   </section>
 
@@ -109,6 +110,64 @@
     </div>
   </section>
 
+  <!-- Standalone Skills Section -->
+  <section id="skills" class="info-section" style="background-color: #f7f6f0; border-top: 1px solid var(--border-color); padding: 5rem 0;">
+    <div class="container">
+      <h2 style="font-family: var(--font-serif); font-size: 2rem; text-align: center; margin-bottom: 1rem;">Standalone Analysis Skills</h2>
+      <p style="text-align: center; color: var(--text-secondary); margin-bottom: 4rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+        Business analysts and researchers can run these tools directly from the terminal without deploying agents. Simply clone the repository and run the scripts using the CLI commands below.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem;">
+        
+        <!-- Skill 1 -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
+          <h3 style="font-family: var(--font-serif); font-size: 1.35rem; margin-bottom: 0.75rem;">1. MLS Real Estate Yields</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">Queries active RentCast sale listings, resolves county boundaries, and links HUD Fair Market Rent tables to compute cap rates.</p>
+          <div style="background: #1a1a19; color: #a855f7; padding: 0.75rem 1rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 1rem; border: 1px solid #2b2b29; overflow-x: auto;">
+            python run_analysis.py properties --city "Columbus" --state "OH"
+          </div>
+        </div>
+
+        <!-- Skill 2 -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
+          <h3 style="font-family: var(--font-serif); font-size: 1.35rem; margin-bottom: 0.75rem;">2. FRED Labor Disruption</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">Queries the St. Louis Fed (FRED) API for MSA employment structures and maps industry sectors to weighted AI vulnerability indices.</p>
+          <div style="background: #1a1a19; color: #a855f7; padding: 0.75rem 1rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 1rem; border: 1px solid #2b2b29; overflow-x: auto;">
+            python run_analysis.py labor-shifts --city "Austin" --state "TX"
+          </div>
+        </div>
+
+        <!-- Skill 3 -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
+          <h3 style="font-family: var(--font-serif); font-size: 1.35rem; margin-bottom: 0.75rem;">3. Workforce AI Exposure</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">Queries O*NET Web Services for SOC code titles, downloads the official task list, and runs Gemini classifications.</p>
+          <div style="background: #1a1a19; color: #a855f7; padding: 0.75rem 1rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 1rem; border: 1px solid #2b2b29; overflow-x: auto;">
+            python run_analysis.py workforce-exposure --title "Software Developer"
+          </div>
+        </div>
+
+        <!-- Skill 4 -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
+          <h3 style="font-family: var(--font-serif); font-size: 1.35rem; margin-bottom: 0.75rem;">4. Census Global Trade</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">Pulls exports and manufacturing statistics by state and HS commodity code from the U.S. Census Bureau trade API.</p>
+          <div style="background: #1a1a19; color: #a855f7; padding: 0.75rem 1rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 1rem; border: 1px solid #2b2b29; overflow-x: auto;">
+            python run_analysis.py trade --state "NC" --commodity "30"
+          </div>
+        </div>
+
+      </div>
+      
+      <div style="text-align: center; margin-top: 3.5rem;">
+        <p style="font-size: 0.9rem; color: var(--text-secondary);">
+          All standalone skills are packaged under the 
+          <a href="file:///Users/enriq/Documents/adk-samples/.agents/skills/economic-analysis-suite/" style="color: var(--accent-blue); text-decoration: none; font-weight: 500;">economic-analysis-suite</a> 
+          folder in the repository.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <!-- Economic Primitives Info Section -->
   <section id="prim" class="info-section">
     <div class="container">
@@ -132,7 +191,7 @@
   <!-- Footer -->
   <footer>
     <div class="container">
-      <p>© 2026 Google LLC. Built with Vertex AI Agent Development Kit (ADK) standards.</p>
+      <p>© 2026 Economic Research. Built with Vertex AI Agent Development Kit (ADK) standards.</p>
     </div>
   </footer>
 
