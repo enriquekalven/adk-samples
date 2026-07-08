@@ -19,7 +19,26 @@ This directory contains the **Economic Analysis Suite** customization skill, whi
 
 ## Prerequisite Setup
 
-Before running the CLI, make sure your `.env` contains the required keys (e.g. `RENTCAST_API_KEY`, `ONET_API_KEY`, `CENSUS_API_KEY`, `FRED_API_KEY`, `HUD_API_KEY`).
+### 1. Install Dependencies
+Run the following command to install the required Python libraries for the standalone suite:
+```bash
+pip install requests fredapi google-genai python-dotenv pydantic
+```
+
+### 2. Configure Environment Variables
+Create a `.env` file in the root of the suite or define these environment variables in your shell:
+```text
+# Sourcing Credentials
+CENSUS_API_KEY=your_census_key_here
+FRED_API_KEY=your_fred_key_here
+HUD_API_KEY=your_hud_jwt_bearer_token_here
+RENTCAST_API_KEY=your_rentcast_api_key_here
+ONET_API_KEY=your_onet_api_key_here
+
+# Vertex AI Google GenAI Configuration (for Workforce AI exposure model)
+GCP_PROJECT=your_gcp_project_id
+GCP_LOCATION=us-central1
+```
 
 ## Standalone Usage
 
