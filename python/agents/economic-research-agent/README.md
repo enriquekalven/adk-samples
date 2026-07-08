@@ -13,6 +13,9 @@ An enterprise-grade, **Multi-Agent intelligence** for high-fidelity regional eco
 
 The **Economic Research Agent (ERA)** is a production-grade site-selection and market intelligence consultant. Designed for corporate research, ERA automates comparative metropolitan cost-modeling by orchestrating live public APIs (FRED, BLS, CENSUS, HUD, EIA) into McKinsey-style strategic briefs—now upgraded with an automated **Auditor Judge Agent** (via Serper Live Search) for zero-hallucination verification.
 
+> [!NOTE]
+> While organizations like Anthropic maintain dedicated, proprietary economic research teams and blogs focused on modeling AI usage and its macroeconomic impact, the **Economic Research Agent (ERA)** on Agent Garden serves a different purpose. Rather than striving to publish proprietary articles or centralized think-tank insights, our goal is to provide a fully transparent, open-source framework. This enables diverse industries and independent research analysts covering real estate, regional development, labor structures, and utility planning to dynamically spin up customized, live-grounded market intelligence pipelines tailored to their own analytical needs.
+
 ### 📊 Agent Details
 
 | Feature | Specifics |
