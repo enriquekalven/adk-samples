@@ -18,11 +18,21 @@
         <div class="logo-icon"></div>
         <span>Economic Research</span>
       </div>
-      <nav class="nav-links">
+      <nav class="nav-links" style="display: flex; align-items: center;">
         <a href="#lab">Sourcing Lab</a>
         <a href="#skills">Standalone Skills</a>
         <a href="https://github.com/google/agent-garden" target="_blank">Agent Garden</a>
         <a href="https://github.com/google/adk-samples" target="_blank">ADK Samples</a>
+        <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme">
+          <!-- Sun Icon (SVG) -->
+          <svg class="sun-icon" viewBox="0 0 24 24">
+            <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41l-1.06-1.06zm1.06-12.37c-.39-.39-1.02-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41zm-12.37 12.37c-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41z"/>
+          </svg>
+          <!-- Moon Icon (SVG) -->
+          <svg class="moon-icon" viewBox="0 0 24 24">
+            <path d="M12.3 22h-.1c-5.5 0-10-4.5-10-10C2.2 6.8 6.5 2.5 11.7 2.1c.5-.1 1 .3 1.1.8.1.5-.2 1-.7 1.2-3.6 1-6.1 4.2-6.1 8 0 4.4 3.6 8 8 8 2.6 0 5-1.2 6.5-3.3.3-.4.8-.5 1.3-.2.4.3.6.8.4 1.3-1.6 2.5-4.4 4.1-7.8 4.1z"/>
+          </svg>
+        </button>
       </nav>
     </div>
   </header>
@@ -46,7 +56,7 @@
         <!-- Sidebar Menu -->
         <div class="sidebar">
           <button id="btn-properties" class="lab-btn active" onclick="selectTab('properties')">
-            <span class="lab-btn-title">1. Real Estate Investment Yields</span>
+            <span class="lab-btn-title">1. Real Estate Yields</span>
             <span class="lab-btn-desc">Sourcing RentCast listings & HUD Cap Rates</span>
           </button>
           
@@ -68,6 +78,21 @@
           <button id="btn-affordability" class="lab-btn" onclick="selectTab('affordability')">
             <span class="lab-btn-title">5. Housing Affordability</span>
             <span class="lab-btn-desc">HUD User FMR vs 50% Area Median Income</span>
+          </button>
+
+          <button id="btn-trends" class="lab-btn" onclick="selectTab('trends')">
+            <span class="lab-btn-title">6. Historical Labor Trends</span>
+            <span class="lab-btn-desc">FRED 10-year MSA unemployment series</span>
+          </button>
+
+          <button id="btn-education" class="lab-btn" onclick="selectTab('education')">
+            <span class="lab-btn-title">7. Educational Pipeline</span>
+            <span class="lab-btn-desc">Census ACS Bachelor's+ County levels</span>
+          </button>
+
+          <button id="btn-chas" class="lab-btn" onclick="selectTab('chas')">
+            <span class="lab-btn-title">8. CHAS Housing Cost Burden</span>
+            <span class="lab-btn-desc">HUD CHAS county-level affordability metrics</span>
           </button>
         </div>
         
@@ -164,6 +189,132 @@
           <a href="file:///Users/enriq/Documents/adk-samples/.agents/skills/economic-analysis-suite/" style="color: var(--accent-blue); text-decoration: none; font-weight: 500;">economic-analysis-suite</a> 
           folder in the repository.
         </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Consultant's Playbook & WOW Matrix Section -->
+  <section id="playbook" class="info-section" style="border-top: 1px solid var(--border-color); padding: 5rem 0; background-color: #ffffff;">
+    <div class="container">
+      <h2 style="font-family: var(--font-serif); font-size: 2rem; text-align: center; margin-bottom: 1rem;">Consultant's Playbook & Strategic "WOW" Matrix</h2>
+      <p style="text-align: center; color: var(--text-secondary); margin-bottom: 4rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+        Explore the 360-degree economic decision support queries mapped to our agent. Click any query to load and execute it directly in the Sourcing Lab above.
+      </p>
+
+      <!-- Case Study Bubble -->
+      <div style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 2.5rem; border-radius: 12px; margin-bottom: 4rem; box-shadow: 0 4px 20px rgba(0,0,0,0.01);">
+        <h3 style="font-family: var(--font-serif); font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          💬 Featured Case Study: Site Selection Benchmark
+        </h3>
+        
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <!-- User Chat -->
+          <div style="display: flex; gap: 1rem; align-items: flex-start;">
+            <div style="background-color: var(--accent-blue); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-weight: 600; font-size: 0.85rem; font-family: var(--font-sans);">USER</div>
+            <div style="background-color: #ffffff; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px; font-size: 1rem; max-width: 80%; font-family: var(--font-serif);">
+              "Compare Austin and Raleigh for a new data center HQ."
+            </div>
+          </div>
+
+          <!-- Agent Chat -->
+          <div style="display: flex; gap: 1rem; align-items: flex-start; justify-content: flex-end;">
+            <div style="background-color: #ffffff; border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 8px; font-size: 0.95rem; max-width: 80%; line-height: 1.6;">
+              <strong style="color: var(--accent-purple);">ERA Agent Response:</strong>
+              <p style="margin-top: 0.5rem; margin-bottom: 0.75rem;">I am analyzing technical and fiscal ROI for NAICS 518210 (Data Processing):</p>
+              <ul style="margin-left: 1.25rem; margin-bottom: 0.75rem;">
+                <li><strong>Utility Benchmarking</strong>: Texas (ERCOT) industrial rates average 8.2¢/kWh vs. North Carolina (Duke Energy) at 7.5¢/kWh.</li>
+                <li><strong>Talent Pipeline</strong>: UT Austin graduated 1,200 CS majors in 2023 vs. 850 from NC State.</li>
+                <li><strong>Fiscal Climate</strong>: NC has a corporate tax phasedown to 0% by 2030, offering better longitudinal OPEX.</li>
+              </ul>
+              <strong style="color: var(--accent-blue);">Recommendation</strong>: Raleigh for long-term tax stability; Austin for immediate talent density.
+            </div>
+            <div style="background: var(--gemini-gradient); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-weight: 600; font-size: 0.85rem; font-family: var(--font-sans); box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);">ERA</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: center; margin-top: 2rem;">
+          <button class="run-btn" onclick="loadAndRunQuery('datacenter')">Run Site Selection Case Study</button>
+        </div>
+      </div>
+
+      <!-- The WOW Matrix Table -->
+      <div style="overflow-x: auto; border: 1px solid var(--border-color); border-radius: 8px;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+          <thead>
+            <tr style="background-color: #f7f6f0; border-bottom: 1px solid var(--border-color);">
+              <th style="padding: 1rem; font-weight: 600; font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-primary);">Source</th>
+              <th style="padding: 1rem; font-weight: 600; font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-primary);">Strategic "WOW" Query</th>
+              <th style="padding: 1rem; font-weight: 600; font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-primary);">Consultative Insight</th>
+              <th style="padding: 1rem; font-weight: 600; font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-primary); text-align: center;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #ffffff;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">FRED</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"What is the 10-year unemployment trend for Austin vs. Nashville?"</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Longitudinal Labor Resilience</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('trends')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #fbfaf7;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">Census</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Show the educational attainment (Bachelor's+) pipeline for Seattle vs. Raleigh."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Talent Depth & Engineering Density</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('education')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #ffffff;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">HUD</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Is Austin affordable for a 50% AMI workforce? Correlate rent vs income."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Workforce Rent Affordability</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('affordability')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #fbfaf7;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">USITC</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Analyze supply chain trade flows for Pharmaceuticals in North Carolina."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Manufacturing Cluster Sourcing</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('trade')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #ffffff;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">Workforce</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Analyze the workforce AI exposure and automation potential for CSRs vs. Developers."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">AI Workforce Adaptation Strategy</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('exposure')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #fbfaf7;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">MLS Sourcing</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Find multifamily investment properties in Columbus, OH and estimate their Cap Rates."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Real Estate Sourcing & Yield Yields</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('properties')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #ffffff;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">CHAS</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"What is the percentage of cost-burdened households in Travis County, TX?"</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Regional Housing Problems & Supply Burden</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('chas')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border-color); background-color: #fbfaf7;">
+              <td style="padding: 1rem; font-weight: 600; color: var(--accent-blue);">Labor Shifts</td>
+              <td style="padding: 1rem; font-family: var(--font-serif);">"Compare Austin and Columbus for AI-driven labor market disruption."</td>
+              <td style="padding: 1rem; color: var(--text-secondary);">Labor Market Disruption Forecasting</td>
+              <td style="padding: 1rem; text-align: center;">
+                <button onclick="loadAndRunQuery('disruption')" style="background-color: #f7f6f0; border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Run</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>

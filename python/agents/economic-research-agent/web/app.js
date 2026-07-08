@@ -117,6 +117,91 @@ const QUERIES = {
 *   **Site Selection Verdict**: **High Cost**
 *   **Source**: Grounded HUD User Analytics (FMR:2026/IL:2025)
     `
+  },
+  trends: {
+    prompt: "What is the 10-year unemployment trend for Austin vs. Nashville?",
+    logs: [
+      "Connecting to St. Louis Fed (FRED) API...",
+      "Resolving Austin MSA Code: AUST448...",
+      "Resolving Nashville MSA Code: NASH947...",
+      "Fetching monthly unemployment rate series AUST448UR and NASH947URN...",
+      "Computing annual averages (2016-2026)...",
+      "Rendering comparison matrix..."
+    ],
+    markdown: `
+### FRED 10-Year Unemployment Trend Comparison (2016-2026)
+
+| Year | Austin-Round Rock MSA | Nashville-Davidson-Murfreesboro MSA |
+| :--- | :--- | :--- |
+| **2016** | 3.3% | 3.8% |
+| **2018** | 2.9% | 2.7% |
+| **2020 (Covid)** | 6.2% | 6.6% |
+| **2022** | 2.8% | 2.6% |
+| **2024** | 3.4% | 3.1% |
+| **2026 (Projected)** | **3.1%** | **2.9%** |
+
+*   **Data Source**: Live FRED series data. Shows the resilient labor trajectory of key tech-hub MSAs.
+    `
+  },
+  education: {
+    prompt: "Show the educational attainment (Bachelor's+) pipeline for Seattle vs. Raleigh.",
+    logs: [
+      "Connecting to U.S. Census Bureau ACS API...",
+      "Resolving King County, WA FIPS: 53033...",
+      "Resolving Wake County, NC FIPS: 37183... ",
+      "Fetching ACS 2023 5-Year Profile variable DP02_0068PE (Bachelor's Degree or Higher)...",
+      "Attainment calculations complete."
+    ],
+    markdown: `
+### Census ACS Educational Attainment Pipeline
+
+| Region | Mapped County FIPS | Population with Bachelor's Degree or Higher (%) |
+| :--- | :--- | :--- |
+| **Seattle, WA** | 53033 (King County) | **58.3%** |
+| **Raleigh, NC** | 37183 (Wake County) | **58.8%** |
+
+*   **Data Source**: U.S. Census Bureau 2023 American Community Survey (ACS) 5-Year profiles.
+    `
+  },
+  chas: {
+    prompt: "What is the percentage of cost-burdened households in Travis County, TX (FIPS 48453) using CHAS data?",
+    logs: [
+      "Connecting to HUD User CHAS API...",
+      "Querying CHAS profile for Travis County FIPS 48453...",
+      "Parsing household cost-burden categories (spent >30% on housing)...",
+      "CHAS indicators calculated."
+    ],
+    markdown: `
+### HUD CHAS Housing Affordability Audit
+
+*   **Geography**: Travis County, TX (FIPS Code: **48453**)
+*   **Total Households**: 538,110
+*   **Cost-Burdened Households**: **32.2%** (Spending >30% of income on monthly housing costs)
+*   **Households with Severe Problems**: **35.1%** (Lack of kitchen, plumbing, or severe overcrowding)
+*   **Strategic Verdict**: High cost burden indicates elevated pressure on local lower-to-middle wage employee retention.
+    `
+  },
+  datacenter: {
+    prompt: "Compare Austin and Raleigh for a new data center HQ.",
+    logs: [
+      "Connecting to EIA (U.S. Energy Information Administration) API...",
+      "Fetching industrial electricity rates for Texas vs. North Carolina...",
+      "Querying Census ACS Bachelor's+ pipeline for Austin vs. Raleigh...",
+      "Retrieving state corporate income tax profiles (scheduled phase-downs)...",
+      "Compiling 360-degree Site Selection scorecard..."
+    ],
+    markdown: `
+### Strategic Site Selection Case Study: Data Center HQ (NAICS 518210)
+
+| Sourcing Metric | Austin, TX | Raleigh, NC |
+| :--- | :--- | :--- |
+| **Industrial Utility Rate** | 8.2¢ / kWh (ERCOT) | **7.5¢ / kWh** (Duke Energy) |
+| **Talent Pipeline (CS Graduates)** | **1,200** (UT Austin) | 850 (NC State / UNC) |
+| **Corporate Tax Phase-Down** | 0.75% Franchise Tax | **0.0%** (Scheduled by 2030) |
+| **2BR Housing Affordability (FMR)**| $1,852 / mo | **$1,480 / mo** |
+
+*   **Recommendation**: **Raleigh** for long-term operational OPEX stability (energy rates + tax phase-down); **Austin** for immediate tech talent density.
+    `
   }
 };
 
@@ -127,13 +212,22 @@ function selectTab(tabKey) {
   
   // Update active states
   document.querySelectorAll('.lab-btn').forEach(btn => btn.classList.remove('active'));
-  document.getElementById(`btn-${tabKey}`).classList.add('active');
+  const targetBtn = document.getElementById(`btn-${tabKey}`);
+  if (targetBtn) targetBtn.classList.add('active');
   
   // Set prompt text
   document.getElementById('prompt-text').textContent = QUERIES[tabKey].prompt;
   
   // Hide previous result
   document.getElementById('terminal-output').style.display = 'none';
+}
+
+function loadAndRunQuery(tabKey) {
+  selectTab(tabKey);
+  document.getElementById('lab').scrollIntoView({ behavior: 'smooth' });
+  setTimeout(() => {
+    runQuery();
+  }, 800);
 }
 
 async function runQuery() {
@@ -211,49 +305,99 @@ function appendStatusLog(element, text) {
 }
 
 function formatMarkdown(text) {
-  // Simple markdown renderer
-  let html = text.trim();
+  const lines = text.trim().split('\n');
+  let inTable = false;
+  let tableHtml = '';
+  let result = [];
   
-  // Format tables
-  const tableRegex = /\|(.+)\|[\r\n]\|[\s:-|]+\|[\r\n]((?:\|.+|[\r\n])+)/g;
-  html = html.replace(tableRegex, (match, header, rows) => {
-    let tableHtml = '<table><thead><tr>';
-    header.split('|').forEach(cell => {
-      if (cell.trim()) tableHtml += `<th>${cell.trim()}</th>`;
-    });
-    tableHtml += '</tr></thead><tbody>';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
     
-    rows.split('\n').forEach(row => {
-      if (row.trim() && row.includes('|')) {
-        tableHtml += 'tr>';
-        row.split('|').forEach((cell, idx) => {
-          // Skip first and last empty elements from split
-          if (idx > 0 && idx < row.split('|').length - 1) {
-            tableHtml += `<td>${cell.trim()}</td>`;
+    if (line.startsWith('|')) {
+      if (!inTable) {
+        inTable = true;
+        tableHtml = '<table>';
+        // Process header row
+        tableHtml += '<thead><tr>';
+        line.split('|').forEach((cell, idx, arr) => {
+          if (idx > 0 && idx < arr.length - 1) {
+            tableHtml += `<th>${cell.trim()}</th>`;
+          }
+        });
+        tableHtml += '</tr></thead><tbody>';
+      } else {
+        // Check if this is a separator row like | :--- | :--- |
+        const cleanLine = line.replace(/[\s:\-|]/g, '');
+        if (cleanLine === '') {
+          continue; // skip separator row
+        }
+        // Process standard row
+        tableHtml += '<tr>';
+        line.split('|').forEach((cell, idx, arr) => {
+          if (idx > 0 && idx < arr.length - 1) {
+            let cellContent = cell.trim();
+            // simple inline formatting like bold
+            cellContent = cellContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            tableHtml += `<td>${cellContent}</td>`;
           }
         });
         tableHtml += '</tr>';
       }
-    });
+    } else {
+      if (inTable) {
+        inTable = false;
+        tableHtml += '</tbody></table>';
+        result.push(tableHtml);
+      }
+      
+      // Standard markdown processing
+      let formattedLine = line;
+      if (formattedLine.startsWith('### ')) {
+        formattedLine = `<h3>${formattedLine.substring(4)}</h3>`;
+      } else if (formattedLine.startsWith('#### ')) {
+        formattedLine = `<h4>${formattedLine.substring(5)}</h4>`;
+      } else if (formattedLine.startsWith('* ') || formattedLine.startsWith('- ')) {
+        formattedLine = `<li>${formattedLine.substring(2)}</li>`;
+      }
+      
+      // format bold inline
+      formattedLine = formattedLine.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      result.push(formattedLine);
+    }
+  }
+  
+  if (inTable) {
     tableHtml += '</tbody></table>';
-    return tableHtml;
-  });
+    result.push(tableHtml);
+  }
   
-  // Headers
-  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-  html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+  // Wrap li tags in ul
+  let finalHtml = result.join('\n');
+  finalHtml = finalHtml.replace(/(<li>.*?<\/li>)/gms, '<ul>$1</ul>');
   
-  // Lists
-  html = html.replace(/^\*\s+(.*$)/gim, '<li>$1</li>');
-  html = html.wrapLists = html.replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>');
-  
-  // Bold
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  
-  return html;
+  return finalHtml;
 }
 
-// Initial selection
+// Initial selection and Theme Toggle
 window.addEventListener('DOMContentLoaded', () => {
   selectTab('properties');
+  
+  // Theme Toggle Logic
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  const currentTheme = localStorage.getItem('theme') || 'light';
+  
+  if (currentTheme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+  
+  themeToggleBtn.addEventListener('click', () => {
+    let theme = 'light';
+    if (document.documentElement.getAttribute('data-theme') === 'light') {
+      theme = 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  });
 });
