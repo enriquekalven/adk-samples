@@ -1,12 +1,13 @@
 // Sample Sourcing Queries and Outputs
 const QUERIES = {
   properties: {
+    category: 'real-estate',
     prompt: "Find active investment properties in Columbus, OH and estimate their Cap Rates using HUD rents.",
     logs: [
-      "Connecting to RentCast API (v1)...",
-      "Fetching active listings for Columbus, OH [Multi-Family]...",
-      "Resolving ZIP codes dynamically using HUD USPS Crosswalk API...",
-      "Querying live HUD FMR rents for Columbus FIPS 39049...",
+      "Accessing RentCast listings API...",
+      "Filtering for 'Columbus, OH'...",
+      "Resolving FIPS and county codes...",
+      "Fetching HUD FMR (Fair Market Rents) for FIPS 39049...",
       "Calculating Net Operating Income & Net yields (35% opex ratio)...",
       "Analysis compiled successfully."
     ],
@@ -23,6 +24,7 @@ const QUERIES = {
     `
   },
   disruption: {
+    category: 'labor',
     prompt: "Compare Austin and Columbus for AI-driven labor market disruption and forecast their 3-year displacement outlook.",
     logs: [
       "Connecting to St. Louis Fed (FRED) API...",
@@ -48,6 +50,7 @@ const QUERIES = {
     `
   },
   exposure: {
+    category: 'labor',
     prompt: "Analyze the AI exposure and automation potential for Customer Service Representatives vs. Software Developers.",
     logs: [
       "Searching O*NET Web Services API (v2) for Job Titles...",
@@ -77,6 +80,7 @@ const QUERIES = {
     `
   },
   trade: {
+    category: 'macro',
     prompt: "Is North Carolina a manufacturing hub for pharmaceuticals based on export data?",
     logs: [
       "Accessing U.S. Census Bureau International Trade API...",
@@ -97,6 +101,7 @@ const QUERIES = {
     `
   },
   affordability: {
+    category: 'real-estate',
     prompt: "Analyze local housing affordability vs Area Median Income (AMI) in Austin.",
     logs: [
       "Connecting to HUD User API...",
@@ -119,6 +124,7 @@ const QUERIES = {
     `
   },
   trends: {
+    category: 'macro',
     prompt: "What is the 10-year unemployment trend for Austin vs. Nashville?",
     logs: [
       "Connecting to St. Louis Fed (FRED) API...",
@@ -144,6 +150,7 @@ const QUERIES = {
     `
   },
   education: {
+    category: 'macro',
     prompt: "Show the educational attainment (Bachelor's+) pipeline for Seattle vs. Raleigh.",
     logs: [
       "Connecting to U.S. Census Bureau ACS API...",
@@ -164,6 +171,7 @@ const QUERIES = {
     `
   },
   chas: {
+    category: 'real-estate',
     prompt: "What is the percentage of cost-burdened households in Travis County, TX (FIPS 48453) using CHAS data?",
     logs: [
       "Connecting to HUD User CHAS API...",
@@ -181,7 +189,195 @@ const QUERIES = {
 *   **Strategic Verdict**: High cost burden indicates elevated pressure on local lower-to-middle wage employee retention.
     `
   },
+  gdp: {
+    category: 'macro',
+    prompt: "Compare the Real GDP growth rate for the San Francisco MSA vs. Dallas.",
+    logs: [
+      "Connecting to BEA (U.S. Bureau of Economic Analysis) API...",
+      "Retrieving MSA FIPS mapping for San Francisco (41860) and Dallas (19100)...",
+      "Querying Regional Table CAGDP9 (Real GDP by Metropolitan Area)...",
+      "Compiling Real GDP growth rates..."
+    ],
+    markdown: `
+### Real GDP Regional Comparison (BEA CAGDP9)
+
+| Metropolitan Area (MSA) | 2022 GDP (Millions $) | 2023 GDP (Millions $) | YoY Growth Rate |
+| :--- | :--- | :--- | :--- |
+| **San Francisco-Oakland-Berkeley, CA** | $643,510 | $668,240 | **3.84%** |
+| **Dallas-Fort Worth-Arlington, TX** | $592,480 | $619,150 | **4.50%** |
+
+*   **Insight**: Dallas exhibits stronger macroeconomic momentum driven by financial services and technology relocation, outperforming San Francisco's YoY growth rate by **66 bps**.
+    `
+  },
+  unionization: {
+    category: 'labor',
+    prompt: "What is the 10-year wage trend vs. unionization in the Rust Belt?",
+    logs: [
+      "Connecting to BLS (Bureau of Labor Statistics) API v2...",
+      "Querying Series ID LUUR0102737600 (Union Members Share)...",
+      "Querying Series ID LNS14000000 (Average Weekly Earnings)...",
+      "Aggregating state-level labor cost indices for Rust Belt (OH, MI, PA)..."
+    ],
+    markdown: `
+### Rust Belt Labor Cost & Structural Risk Profile
+
+| Metric | Ohio (OH) | Michigan (MI) | Pennsylvania (PA) |
+| :--- | :--- | :--- | :--- |
+| **Union Representation Rate** | 12.5% | 13.0% | 12.0% |
+| **Mean Manufacturing Wage** | $24.50 / hr | $26.80 / hr | $25.20 / hr |
+| **10-Year Real Wage Growth** | +8.2% | +9.1% | +7.8% |
+
+*   **Insight**: Michigan presents the highest labor structural risk but also boasts the highest manufacturing productivity profile, while Ohio offers a more competitive entry-level labor cost structure.
+    `
+  },
+  political: {
+    category: 'regulatory',
+    prompt: "Benchmark the political stability of site selection in Ohio using FEC data.",
+    logs: [
+      "Connecting to Federal Election Commission (FEC) API...",
+      "Retrieving campaign finance totals for Ohio (OH)...",
+      "Benchmarking Political Action Committee (PAC) receipts...",
+      "Calculating Business vs. Labor contribution ratios..."
+    ],
+    markdown: `
+### FEC Political Stability Benchmark (Ohio)
+
+*   **State**: Ohio (OH)
+*   **Election Cycle**: 2024
+*   **Total State Receipts**: $148,250,910
+*   **Political Activity Index**: **High** (Top 10 Nationally)
+*   **Business PAC Contribution Ratio**: 62.4% (Corp-leaning)
+*   **Labor PAC Contribution Ratio**: 37.6% (Union-leaning)
+
+> **Consultative Assessment**: High PAC contribution rates indicate intense regulatory lobbying. Businesses should expect moderate-to-high regulatory volatility leading up to cycle transitions.
+    `
+  },
+  semiconductor: {
+    category: 'macro',
+    prompt: "Analyze Arizona as a semiconductor hub. Show trade flows vs state tax rates.",
+    logs: [
+      "Querying Census Statehs Commodity Export database...",
+      "Filtering HS Code 8542 (Electronic Integrated Circuits) for Arizona (AZ)...",
+      "Sourcing State Corporate Tax Rates from Tax Foundation...",
+      "Mapping primary export destination countries..."
+    ],
+    markdown: `
+### Semiconductor Supply Chain & Fiscal Profile: Arizona
+
+*   **Primary Commodity**: HS Code 8542 (Electronic Integrated Circuits)
+*   **Annual Export Value**: $4.85 Billion (Live Census Statehs)
+*   **Primary Export Destinations**: Taiwan (34%), South Korea (22%), Mexico (18%)
+*   **State Corporate Tax Rate**: **4.9%** (Flat)
+*   **Research & Development Tax Credits**: 15% (Refundable up to limit)
+
+> **Strategic Takeaway**: Arizona remains a premier semiconductor hub due to a competitive flat corporate tax rate and dense supply chain corridors to East Asia.
+    `
+  },
+  utilities: {
+    category: 'regulatory',
+    prompt: "Compare industrial electricity rates in Texas vs. Ohio for a data center.",
+    logs: [
+      "Connecting to U.S. Energy Information Administration (EIA v2) API...",
+      "Fetching monthly retail electricity sales data...",
+      "Filtering Sector ID: IND (Industrial) for TX and OH...",
+      "Formatting prices to cents/kWh..."
+    ],
+    markdown: `
+### Industrial Utility Price Benchmark (EIA Retail Sales)
+
+| State | Price (cents/kWh) | Reporting Period | Source |
+| :--- | :--- | :--- | :--- |
+| **Texas (TX)** | 8.24¢ | May 2024 | EIA Retail Sales |
+| **Ohio (OH)** | 7.15¢ | May 2024 | EIA Retail Sales |
+
+*   **EIA Series**: Retail Sales, Price, Monthly.
+*   **Cost Delta**: Ohio offers a **13.2% operational utility savings** over Texas for continuous baseload power configurations.
+    `
+  },
+  compliance: {
+    category: 'regulatory',
+    prompt: "Are there any recent regulatory notices regarding semiconductors in Texas?",
+    logs: [
+      "Searching Federal Register API...",
+      "Keywords: 'semiconductor', 'CHIPS Act', 'Texas'...",
+      "Filtering for active notices and final rules..."
+    ],
+    markdown: `
+### Federal Regulatory Notices: Semiconductor Compliance
+
+1.  **CHIPS Program Office National Security Guardrails**
+    *   *Type*: Notice of Proposed Rulemaking
+    *   *Impact*: Restricts expansion of semiconductor manufacturing facilities in foreign countries of concern.
+2.  **Environmental Protection Agency (EPA) Categorical Exclusions**
+    *   *Type*: Final Rule
+    *   *Impact*: Simplifies NEPA reviews for semiconductor facilities receiving CHIPS Act funding.
+
+> **Compliance Directive**: Ensure facility plans for prospective sites in Texas adhere strictly to NEPA environmental monitoring.
+    `
+  },
+  taxation: {
+    category: 'macro',
+    prompt: "What are the corporate income tax brackets for North Carolina in 2024?",
+    logs: [
+      "Querying Tax Foundation State Corporate Profile...",
+      "Retrieving statutory tax brackets for North Carolina (NC)...",
+      "Checking scheduled legislative phasedown updates..."
+    ],
+    markdown: `
+### North Carolina Corporate Tax Schedule
+
+*   **2024 Corporate Tax Rate**: **2.5%** (Lowest flat rate in the US)
+*   **Scheduled Phasedown**:
+    - 2025: 2.0%
+    - 2026: 1.0%
+    - 2030: **0.0%** (Phased out entirely)
+*   **Franchise Tax Rate**: $1.50 per $1,000 of capital stock
+
+> **Strategic Takeaway**: North Carolina's planned 0% rate by 2030 offers the most competitive long-term tax posture for corporate HQs in the United States.
+    `
+  },
+  crosswalk: {
+    category: 'real-estate',
+    prompt: "Find the county FIPS code for ZIP code 78702 using USPS crosswalk.",
+    logs: [
+      "Connecting to HUD USPS Crosswalk API...",
+      "Querying ZIP to County FIPS (ZIP: 78702)...",
+      "Parsing residential ratio allocations..."
+    ],
+    markdown: `
+### HUD USPS Zip-to-FIPS Crosswalk Result
+
+*   **Input ZIP**: 78702
+*   **Matched County FIPS**: 48453 (Travis County, TX)
+*   **Residential Ratio Allocation**: 1.000 (100% of residential delivery addresses reside in Travis County)
+*   **Data Source**: HUD USPS Crosswalk Query (Q1 2024)
+    `
+  },
+  matrix: {
+    category: 'macro',
+    prompt: "Create a Metro Matrix comparing Denver and Seattle for a new Tech Hub.",
+    logs: [
+      "Connecting to Census ACS 5-Year estimates...",
+      "Querying FRED labor displacement indicators...",
+      "Calculating regional housing cost burdens...",
+      "Synthesizing 360-Degree Site Scorecard..."
+    ],
+    markdown: `
+### Metro Matrix: Tech Hub Site Scorecard (Denver vs. Seattle)
+
+| Sourcing Metric | Denver, CO | Seattle, WA | Advantage |
+| :--- | :--- | :--- | :--- |
+| **Educational Attainment (BA+)** | 46.5% | **58.2%** | Seattle (+11.7%) |
+| **AI Displacement Risk (Labor)** | Low-Med | Low | Seattle |
+| **HUD Median Family Income (MFI)** | $112,000 | **$124,500** | Seattle |
+| **2BR FMR Rent Cost** | **$1,780 / mo** | $2,250 / mo | Denver (+$470/mo) |
+| **Overall Tech Score** | 78 / 100 | **89 / 100** | **Seattle** |
+
+> **Recommendation**: Seattle for high talent density and workforce depth; Denver for employee cost-of-living index optimization.
+    `
+  },
   datacenter: {
+    category: 'macro',
     prompt: "Compare Austin and Raleigh for a new data center HQ.",
     logs: [
       "Connecting to EIA (U.S. Energy Information Administration) API...",
@@ -401,3 +597,19 @@ window.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('theme', theme);
   });
 });
+
+function filterCategory(cat) {
+  // Update filter pill active states
+  document.querySelectorAll('.filter-pill').forEach(pill => pill.classList.remove('active'));
+  document.getElementById(`pill-${cat}`).classList.add('active');
+  
+  // Show/hide query buttons
+  document.querySelectorAll('.lab-btn').forEach(btn => {
+    const key = btn.id.replace('btn-', '');
+    if (cat === 'all' || (QUERIES[key] && QUERIES[key].category === cat)) {
+      btn.style.display = 'block';
+    } else {
+      btn.style.display = 'none';
+    }
+  });
+}

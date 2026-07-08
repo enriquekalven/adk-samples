@@ -54,46 +54,104 @@
       
       <div class="lab-layout">
         <!-- Sidebar Menu -->
-        <div class="sidebar">
-          <button id="btn-properties" class="lab-btn active" onclick="selectTab('properties')">
-            <span class="lab-btn-title">1. Real Estate Yields</span>
-            <span class="lab-btn-desc">Sourcing RentCast listings & HUD Cap Rates</span>
-          </button>
-          
-          <button id="btn-disruption" class="lab-btn" onclick="selectTab('disruption')">
-            <span class="lab-btn-title">2. Labor Market Disruption</span>
-            <span class="lab-btn-desc">FRED MSA employment vulnerability shares</span>
-          </button>
-          
-          <button id="btn-exposure" class="lab-btn" onclick="selectTab('exposure')">
-            <span class="lab-btn-title">3. Occupational AI Exposure</span>
-            <span class="lab-btn-desc">O*NET SOC task parsing via Gemini 2.5</span>
-          </button>
-          
-          <button id="btn-trade" class="lab-btn" onclick="selectTab('trade')">
-            <span class="lab-btn-title">4. Supply Chain Trade Flows</span>
-            <span class="lab-btn-desc">Census statehs commodity export sourcing</span>
-          </button>
-          
-          <button id="btn-affordability" class="lab-btn" onclick="selectTab('affordability')">
-            <span class="lab-btn-title">5. Housing Affordability</span>
-            <span class="lab-btn-desc">HUD User FMR vs 50% Area Median Income</span>
-          </button>
+        <div class="sidebar" style="display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Category Filter Pills -->
+          <div class="category-filters" style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+            <button id="pill-all" class="filter-pill active" onclick="filterCategory('all')">All</button>
+            <button id="pill-real-estate" class="filter-pill" onclick="filterCategory('real-estate')">Real Estate</button>
+            <button id="pill-macro" class="filter-pill" onclick="filterCategory('macro')">Macro</button>
+            <button id="pill-labor" class="filter-pill" onclick="filterCategory('labor')">Labor</button>
+            <button id="pill-regulatory" class="filter-pill" onclick="filterCategory('regulatory')">Regs</button>
+          </div>
 
-          <button id="btn-trends" class="lab-btn" onclick="selectTab('trends')">
-            <span class="lab-btn-title">6. Historical Labor Trends</span>
-            <span class="lab-btn-desc">FRED 10-year MSA unemployment series</span>
-          </button>
+          <!-- Scrollable Sidebar Buttons Container -->
+          <div class="sidebar-scroll" style="height: 600px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; padding-right: 0.4rem;">
+            <button id="btn-properties" class="lab-btn active" onclick="selectTab('properties')">
+              <span class="lab-btn-title">1. Real Estate Yields</span>
+              <span class="lab-btn-desc">Sourcing RentCast listings & HUD Cap Rates</span>
+            </button>
+            
+            <button id="btn-disruption" class="lab-btn" onclick="selectTab('disruption')">
+              <span class="lab-btn-title">2. Labor Disruption</span>
+              <span class="lab-btn-desc">FRED MSA employment vulnerability shares</span>
+            </button>
+            
+            <button id="btn-exposure" class="lab-btn" onclick="selectTab('exposure')">
+              <span class="lab-btn-title">3. Task AI Exposure</span>
+              <span class="lab-btn-desc">O*NET SOC task parsing via Gemini 2.5</span>
+            </button>
+            
+            <button id="btn-trade" class="lab-btn" onclick="selectTab('trade')">
+              <span class="lab-btn-title">4. Supply Chain Trade Flows</span>
+              <span class="lab-btn-desc">Census statehs HS export trade values</span>
+            </button>
+            
+            <button id="btn-affordability" class="lab-btn" onclick="selectTab('affordability')">
+              <span class="lab-btn-title">5. Housing Affordability</span>
+              <span class="lab-btn-desc">HUD FMR vs 50% Area Median Income</span>
+            </button>
+  
+            <button id="btn-trends" class="lab-btn" onclick="selectTab('trends')">
+              <span class="lab-btn-title">6. Historical Unemployment</span>
+              <span class="lab-btn-desc">FRED 10-year Austin vs Nashville series</span>
+            </button>
+  
+            <button id="btn-education" class="lab-btn" onclick="selectTab('education')">
+              <span class="lab-btn-title">7. Educational Pipeline</span>
+              <span class="lab-btn-desc">Census ACS Bachelor's+ County levels</span>
+            </button>
+  
+            <button id="btn-chas" class="lab-btn" onclick="selectTab('chas')">
+              <span class="lab-btn-title">8. Cost Burden (CHAS)</span>
+              <span class="lab-btn-desc">HUD CHAS regional housing problems</span>
+            </button>
 
-          <button id="btn-education" class="lab-btn" onclick="selectTab('education')">
-            <span class="lab-btn-title">7. Educational Pipeline</span>
-            <span class="lab-btn-desc">Census ACS Bachelor's+ County levels</span>
-          </button>
+            <!-- New buttons -->
+            <button id="btn-gdp" class="lab-btn" onclick="selectTab('gdp')">
+              <span class="lab-btn-title">9. MSA GDP Growth</span>
+              <span class="lab-btn-desc">BEA regional Real GDP comparisons</span>
+            </button>
 
-          <button id="btn-chas" class="lab-btn" onclick="selectTab('chas')">
-            <span class="lab-btn-title">8. CHAS Housing Cost Burden</span>
-            <span class="lab-btn-desc">HUD CHAS county-level affordability metrics</span>
-          </button>
+            <button id="btn-unionization" class="lab-btn" onclick="selectTab('unionization')">
+              <span class="lab-btn-title">10. Labor Unionization</span>
+              <span class="lab-btn-desc">BLS manufacturing wages & union rates</span>
+            </button>
+
+            <button id="btn-political" class="lab-btn" onclick="selectTab('political')">
+              <span class="lab-btn-title">11. Political Stability</span>
+              <span class="lab-btn-desc">FEC PAC campaign finance totals</span>
+            </button>
+
+            <button id="btn-semiconductor" class="lab-btn" onclick="selectTab('semiconductor')">
+              <span class="lab-btn-title">12. Semiconductor Hubs</span>
+              <span class="lab-btn-desc">USITC HS chip exports vs state taxes</span>
+            </button>
+
+            <button id="btn-utilities" class="lab-btn" onclick="selectTab('utilities')">
+              <span class="lab-btn-title">13. Industrial Utilities</span>
+              <span class="lab-btn-desc">EIA industrial electricity rate benchmarks</span>
+            </button>
+
+            <button id="btn-compliance" class="lab-btn" onclick="selectTab('compliance')">
+              <span class="lab-btn-title">14. Federal Compliance</span>
+              <span class="lab-btn-desc">Federal Register active semiconductor rules</span>
+            </button>
+
+            <button id="btn-taxation" class="lab-btn" onclick="selectTab('taxation')">
+              <span class="lab-btn-title">15. Corporate Taxation</span>
+              <span class="lab-btn-desc">Tax Foundation brackets & phasedowns</span>
+            </button>
+
+            <button id="btn-crosswalk" class="lab-btn" onclick="selectTab('crosswalk')">
+              <span class="lab-btn-title">16. USPS ZIP Crosswalk</span>
+              <span class="lab-btn-desc">HUD dynamic ZIP-to-County FIPS maps</span>
+            </button>
+
+            <button id="btn-matrix" class="lab-btn" onclick="selectTab('matrix')">
+              <span class="lab-btn-title">17. Tech Hub Scorecard</span>
+              <span class="lab-btn-desc">360-degree regional Metro Matrix comparisons</span>
+            </button>
+          </div>
         </div>
         
         <!-- Console Window -->
