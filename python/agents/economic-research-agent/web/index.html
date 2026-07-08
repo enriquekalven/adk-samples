@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Economic Futures & Agentic Research</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Georgia&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container header-inner">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <span>Google Economic Futures</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#lab">Sourcing Lab</a>
+        <a href="#prim">Economic Primitives</a>
+        <a href="https://github.com/google/adk-samples" target="_blank">ADK Standard</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-subtitle">Agentic Economic Research</div>
+      <h1>Reshaping the Economy through Agentic Sourcing & Evaluation</h1>
+      <p>The Google Economic Futures team studies how AI and autonomous agents reshape industries, real estate yields, and regional labor markets. We build empirical primitives that move beyond speculation to track economic transitions in real time.</p>
+    </div>
+  </section>
+
+  <!-- Sourcing Lab Console -->
+  <section id="lab" class="sourcing-lab">
+    <div class="container">
+      <h2 class="lab-title">Interactive Sourcing Lab</h2>
+      <div class="lab-subtitle">Execute wow-factor research queries against the live Economic Research Agent. Select a category below to test the sourcing primitives.</div>
+      
+      <div class="lab-layout">
+        <!-- Sidebar Menu -->
+        <div class="sidebar">
+          <button id="btn-properties" class="lab-btn active" onclick="selectTab('properties')">
+            <span class="lab-btn-title">1. Real Estate Investment Yields</span>
+            <span class="lab-btn-desc">Sourcing RentCast listings & HUD Cap Rates</span>
+          </button>
+          
+          <button id="btn-disruption" class="lab-btn" onclick="selectTab('disruption')">
+            <span class="lab-btn-title">2. Labor Market Disruption</span>
+            <span class="lab-btn-desc">FRED MSA employment vulnerability shares</span>
+          </button>
+          
+          <button id="btn-exposure" class="lab-btn" onclick="selectTab('exposure')">
+            <span class="lab-btn-title">3. Occupational AI Exposure</span>
+            <span class="lab-btn-desc">O*NET SOC task parsing via Gemini 2.5</span>
+          </button>
+          
+          <button id="btn-trade" class="lab-btn" onclick="selectTab('trade')">
+            <span class="lab-btn-title">4. Supply Chain Trade Flows</span>
+            <span class="lab-btn-desc">Census statehs commodity export sourcing</span>
+          </button>
+          
+          <button id="btn-affordability" class="lab-btn" onclick="selectTab('affordability')">
+            <span class="lab-btn-title">5. Housing Affordability</span>
+            <span class="lab-btn-desc">HUD User FMR vs 50% Area Median Income</span>
+          </button>
+        </div>
+        
+        <!-- Console Window -->
+        <div class="console-window">
+          <div class="console-header">
+            <div class="console-dots">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+            </div>
+            <div class="console-title">economic_research_agent@gemini_runner: ~</div>
+            <div style="width: 50px;"></div>
+          </div>
+          
+          <div class="console-body">
+            <div class="query-input-block">
+              <div class="query-prompt-label">research_agent_query:</div>
+              <div id="prompt-text" class="query-input-box">
+                Find active investment properties in Columbus, OH and estimate their Cap Rates using HUD rents.
+              </div>
+            </div>
+            
+            <div class="console-actions">
+              <button id="run-btn" class="run-btn" onclick="runQuery()">Run Sourcing Query</button>
+            </div>
+            
+            <!-- Output Block -->
+            <div id="terminal-output" class="terminal-output">
+              <div id="status-log" class="status-log">
+                <!-- Status steps will stream in here -->
+              </div>
+              <div id="result-markdown" class="result-markdown">
+                <!-- Markdown table and results will load here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Economic Primitives Info Section -->
+  <section id="prim" class="info-section">
+    <div class="container">
+      <div class="info-grid">
+        <div class="info-card">
+          <h4>Sourced from HUD User</h4>
+          <p>Links FIPS and ZIP code boundaries to current Fair Market Rents and Area Median Income data to calculate regional cost burdens on-the-fly.</p>
+        </div>
+        <div class="info-card">
+          <h4>Sourced from Census Bureau</h4>
+          <p>Ingests statehs series data to map trade export dependencies by state and HS commodity code, confirming regional manufacturing clusters.</p>
+        </div>
+        <div class="info-card">
+          <h4>Sourced from St. Louis Fed</h4>
+          <p>Extracts State and Area Employment (SAE) logs from the FRED API to calculate real-time economic concentration and disruption indices.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>© 2026 Google LLC. Built with Vertex AI Agent Development Kit (ADK) standards.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
