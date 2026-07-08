@@ -13,6 +13,7 @@ This skill provides modular economic analysis tools for real estate and workforc
 2. **Census Trade Flows**: Fetches real-time trade exports by state and HS commodity code from the U.S. Census Bureau.
 3. **O*NET Occupational AI Exposure**: Resolves job titles to O*NET SOC codes, fetches DOL task lists, and evaluates task-level exposure via Gemini.
 4. **FRED Labor Disruption**: Calculates regional AI Vulnerability Indices dynamically using St. Louis Fed sector employment data.
+5. **HUD Housing Affordability**: Analyzes local 2BR FMR rents vs. 50% AMI levels to calculate rent-to-income cost burdens.
 
 ## Standalone Usage
 
@@ -30,4 +31,7 @@ python3 run_analysis.py trade --states "North Carolina" --commodity "Pharmaceuti
 
 # Compare labor market disruption in Austin and Raleigh
 python3 run_analysis.py disruption --cities Austin Raleigh
+
+# Analyze local housing affordability vs Area Median Income (AMI)
+python3 run_analysis.py affordability --city-or-fips Austin
 ```

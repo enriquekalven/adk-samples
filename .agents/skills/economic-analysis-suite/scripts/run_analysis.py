@@ -39,6 +39,10 @@ def main():
     parser_mls.add_argument("--city", required=True, help="Target city (e.g. Columbus)")
     parser_mls.add_argument("--type", default="multifamily", help="Property type: multifamily, single-family, condo")
     
+    # 5. Housing Affordability
+    parser_aff = subparsers.add_parser("affordability", help="Analyze regional HUD housing affordability vs AMI")
+    parser_aff.add_argument("--city-or-fips", required=True, help="Target city name or 5-digit County FIPS code (e.g. Austin or 39049)")
+    
     args = parser.parse_args()
     
     if args.command == "trade":
@@ -52,6 +56,10 @@ def main():
         print(res)
     elif args.command == "properties":
         res = fetch_mls_property_listings(args.city, property_type=args.type)
+        print(res)
+    elif args.command == "affordability":
+        from hud_skill import analyze_housing_affordability
+        res = analyze_housing_affordability(args.city_or_fips)
         print(res)
 
 def classify_exposure_with_fallback(jobs):

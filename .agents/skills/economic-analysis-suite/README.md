@@ -19,7 +19,7 @@ This directory contains the **Economic Analysis Suite** customization skill, whi
 
 ## Prerequisite Setup
 
-Before running the CLI, make sure your `.env` contains the required keys (e.g. `RENTCAST_API_KEY`, `ONET_API_KEY`, `CENSUS_API_KEY`, `FRED_API_KEY`).
+Before running the CLI, make sure your `.env` contains the required keys (e.g. `RENTCAST_API_KEY`, `ONET_API_KEY`, `CENSUS_API_KEY`, `FRED_API_KEY`, `HUD_API_KEY`).
 
 ## Standalone Usage
 
@@ -39,4 +39,7 @@ python3 run_analysis.py exposure --jobs "Software Developers"
 
 # 4. Regional Trade Flows (Census statehs API)
 python3 run_analysis.py trade --states "North Carolina" --commodity "Pharmaceuticals"
+
+# 5. Housing Affordability (HUD User API FMR vs. AMI Limits)
+python3 run_analysis.py affordability --city-or-fips Austin
 ```
