@@ -30,6 +30,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "google-adk[eval]>=1.31.0",
     "statsmodels>=0.14.6",
+    "markdown>=3.10.0"
 ]
 
 

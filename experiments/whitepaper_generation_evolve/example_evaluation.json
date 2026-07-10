@@ -1,0 +1,46 @@
+{
+  "scores": [
+    {
+      "metric": "composite_quality_score",
+      "score": 8.45
+    },
+    {
+      "metric": "narrative_professionalism",
+      "score": 9.1
+    },
+    {
+      "metric": "data_grounding_rigor",
+      "score": 8.0
+    },
+    {
+      "metric": "synthesis_correlations",
+      "score": 8.5
+    },
+    {
+      "metric": "citation_compliance",
+      "score": 9.0
+    }
+  ],
+  "insights": [
+    {
+      "label": "stdout",
+      "text": "Generated 4-step research plan.\nExecuting FRED API call for AUST448UR...\nExecuting EIA API call for TX vs OH...\nExecuting BLS API call for NAICS 325...\nSynthesizing whitepaper Markdown...\n"
+    },
+    {
+      "label": "narrative_professionalism",
+      "text": "9.1"
+    },
+    {
+      "label": "data_grounding_rigor",
+      "text": "8.0"
+    },
+    {
+      "label": "synthesis_correlations",
+      "text": "8.5"
+    },
+    {
+      "label": "citation_compliance",
+      "text": "9.0"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "whitepaper_orchestrator",
+  "title": "Deep Research Whitepaper Generation Orchestrator",
+  "problem_description": "Develop a multi-step orchestration pipeline and prompt chain (Planner -> Researcher -> Auditor -> Scribe) that generates a deeply researched, comprehensive, data-dense, McKinsey-style Markdown whitepaper based on a consultative economic research goal. It must ground its claims in live API data and external web search, correlate derived metrics across sources, and enforce correct URL citations at the end of the report. Avoid asking the user for complementary steps; retrieve everything required in a single flow.",
+  "metric_name": "composite_quality_score",
+  "metric_direction": "maximize",
+  "eval_inputs": {
+    "research_topic": "Compare the Real GDP growth rate, industrial electricity rates, and workforce AI exposure risk for a new tech and manufacturing hub between Austin, TX and Columbus, OH."
+  },
+  "language": "python",
+  "allowed_imports": [
+    "economic_research",
+    "google.adk",
+    "google.genai",
+    "requests",
+    "bs4",
+    "pandas",
+    "numpy",
+    "statsmodels",
+    "dotenv",
+    "concurrent.futures",
+    "json",
+    "os",
+    "re",
+    "math"
+  ],
+  "forbidden_imports": [],
+  "initial_program_description": "Implements the WhitepaperOrchestrator class and the # EVOLVE-BLOCK-START block with a multi-step Planner, Researcher, and Scribe prompt-chain using the ADK 2.0 framework.",
+  "evolve_block_description": "Contains the DAG orchestration logic, the prompt templates for each stage (Planner, Researcher, Scribe, Critic), and the chaining parameters.",
+  "evaluation_strategy": "COMPOSITE_MULTI_OBJECTIVE",
+  "timeout_seconds": 120,
+  "rungs": null,
+  "python_version": ">=3.10",
+  "dependencies": [
+    "google-adk",
+    "google-genai",
+    "requests",
+    "beautifulsoup4",
+    "pandas",
+    "numpy",
+    "statsmodels",
+    "python-dotenv",
+    "economic-research @ file:///Users/enriq/Documents/adk-samples/python/agents/economic-research-agent"
+  ],
+  "source_file": null,
+  "source_code": null,
+  "source_files": null,
+  "constraints": [
+    "Must output valid Markdown adhering to a formal McKinsey/BCG/Bain whitepaper format.",
+    "Must execute at least 3 distinct live API tools from the economic_research package for grounding.",
+    "Must synthesize cross-source correlations into derived metrics or matrices.",
+    "Must include source URL citations for all API and Serper search endpoints at the end of the whitepaper.",
+    "Must handle API rate limits and connection timeouts gracefully."
+  ]
+}

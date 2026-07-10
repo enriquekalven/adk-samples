@@ -169,9 +169,10 @@ def fetch_mls_property_listings(
             except Exception:
                 pass
                 
-        # If dynamic FIPS lookup fails, fall back to our city map
+        # If dynamic FIPS lookup fails, fall back to our evolved Dynamic Entity Resolver
         if not fips:
-            fips = CITY_FIPS_MAP.get(city_clean)
+            from economic_research.tools.dynamic_entity_resolver import resolve_fips
+            fips = resolve_fips(city_clean)
             
         if fips:
             try:

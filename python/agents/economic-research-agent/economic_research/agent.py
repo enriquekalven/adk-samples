@@ -416,6 +416,22 @@ class ERAAgent:
 
         return final_report
 
+    def generate_whitepaper(self, research_topic: str) -> str:
+        """
+        Generates a premium Corporate Whitepaper autonomously for ANY 'Wow Factor' topic.
+        """
+        from economic_research.orchestrators.universal_whitepaper_orchestrator import solve as universal_solve
+        eval_inputs = {"research_topic": research_topic}
+        return universal_solve(eval_inputs)
+
+    def generate_real_estate_brief(self, city_names: list[str], property_type: str = "single-family", mortgage_rate: float = 0.068, down_payment_pct: float = 0.20) -> str:
+        """
+        Generates a pro-forma Real Estate Portfolio & Yield Investment Brief.
+        """
+        from economic_research.advisors.real_estate_advisor import RealEstatePortfolioAdvisor
+        advisor = RealEstatePortfolioAdvisor(mortgage_rate=mortgage_rate, down_payment_pct=down_payment_pct)
+        return advisor.generate_investment_brief(city_names=city_names, property_type=property_type)
+
 
 
 export_agent = ERAAgent()
