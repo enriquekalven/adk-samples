@@ -238,3 +238,6 @@ go/agents/sail-researcher/server
 .gradle/
 *.class
 local.properties
+
+# AlphaEvolve R&D Experiments
+experiments/
