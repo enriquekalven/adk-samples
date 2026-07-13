@@ -241,3 +241,7 @@ local.properties
 
 # AlphaEvolve R&D Experiments
 experiments/
+
+# Local Developer Cache & Tokens
+.firebase/
+.gcloud_token
