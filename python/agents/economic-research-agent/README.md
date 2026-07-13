@@ -57,8 +57,18 @@ The **Economic Research Agent (ERA)** is a production-grade site-selection and m
 | **Labor Shifts** | "Compare Austin and Columbus for AI-driven labor market disruption and forecast their 3-year displacement outlook." | Labor Market Disruption Forecasting |
 | **Combined** | "Create a Metro Matrix comparing Denver and Seattle for a new Tech Hub." | 360-Degree Site Selection (Level 3) |
 
+### 💎 Advanced "Multi-Million Dollar" Whitepaper Suite
+Evolve your analysis into premium, PE-grade and blog-ready Corporate Prospectuses utilizing our graduated **Universal Whitepaper Engine**. Trigger autonomously via Python:
 
+```bash
+uv run python -c "from economic_research.agent import ERAAgent; print(ERAAgent().generate_whitepaper('YOUR_QUERY_HERE'))"
+```
 
+| Strategic Pillar | The "Multi-Million Dollar" WOW Query | Derived Analysis |
+| :--- | :--- | :--- |
+| **Pillar B** (Real Estate) | "Underwrite a Multi-Family Investment portfolio across the Sun Belt, contrasting Phoenix, AZ, Atlanta, GA, and Raleigh, NC." | Dynamic RentCast Cap Rates, HUD FMR Affordability Matrices, and Cash-on-Cash Underwriting. |
+| **Pillar A + C** (Workforce AI) | "Select the optimal regional Hub for an Advanced AI R&D Center, contrasting Columbus, OH, Pittsburgh, PA, and Salt Lake City, UT." | O*NET AI Task Exposure, Talent Pipeline Demographics (Census), and EIA Utility Benchmarking. |
+| **Pillar A + D** (Global Trade) | "Underwrite a Tier-1 Semiconductor Manufacturing Facility site selection, contrasting Phoenix, AZ and Syracuse, NY." | USITC Trade Dependencies, State Tax Abatements (Good Jobs First), and Federal Register compliance. |
 
 ### 📡 Consultative Capabilities
 
