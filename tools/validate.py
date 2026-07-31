@@ -7,7 +7,8 @@ Usage:
 
 Both arguments are optional:
 
-  subcommand  — which check(s) to run; one of: manifest, all (default: all)
+  subcommand  — which check(s) to run; one of: manifest, structure, readme, all
+                (default: all)
   scope       — what to validate; one of:
                   all            (default) validate core/ and contrib/
                   core           validate core/ only
@@ -19,11 +20,14 @@ is a known root ('core', 'contrib'), it is treated as the scope and all
 checks are run.
 
 Examples:
-  uv run validate core/rag-agent-search   # run all checks on one recipe
-  uv run validate core                    # run all checks on core/ only
-  uv run validate manifest                # run manifest check on everything
-  uv run validate manifest core           # run manifest check on core/ only
-  uv run validate manifest core/rag-agent-search
+  uv run validate core/rag-agent-search    # run all checks on one recipe
+  uv run validate core                     # run all checks on core/ only
+  uv run validate manifest                 # run manifest check on everything
+  uv run validate manifest core            # run manifest check on core/ only
+  uv run validate structure                # run structural check on everything
+  uv run validate structure core/rag-agent-search
+  uv run validate readme                   # run README check on everything
+  uv run validate readme core/python/rag-agent-search
 
 Exit codes:
   0 — all checks passed
@@ -33,11 +37,20 @@ Exit codes:
 import sys
 
 import validate_manifest
+import validate_placement
+import validate_readme
+import validate_structure
 
 SUBCOMMANDS = {
     "manifest": ("Manifest validation", validate_manifest.main),
-    # Register future tools here, e.g.:
-    # "lint": ("Lint check", validate_lint.main),
+    "structure": ("Structure validation", validate_structure.main),
+    "readme": ("README validation", validate_readme.main),
+    # Placement answers "is this recipe in the right folder", which the
+    # per-recipe checkers above cannot: they only ever see recipes the
+    # collector already found, and a misplaced one is missed by that
+    # collector. CI runs it as its own job; registering it here is what
+    # lets a contributor catch the problem locally before pushing.
+    "placement": ("Placement validation", validate_placement.main),
 }
 
 VALID_SUBCOMMANDS = [*SUBCOMMANDS, "all"]

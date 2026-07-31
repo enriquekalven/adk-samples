@@ -79,7 +79,7 @@ uv run python -c "from economic_research.agent import ERAAgent; print(ERAAgent()
 
 ## B. Architecture Visuals
 
-![ERA Architecture](economic_research_agent_architecture.png)
+![ERA Architecture](economic_research_agent_architecture.webp)
 
 ```mermaid
 graph TD

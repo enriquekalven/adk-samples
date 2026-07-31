@@ -21,8 +21,7 @@ Usage:
   # Validate a single recipe:
   python3 tools/validate_manifest.py core/rag-agent-search
 
-  Dependencies are managed via the 'tools' dependency group in pyproject.toml.
-  Run `uv sync --group tools` once before using.
+  Dependencies are managed in pyproject.toml. Run `uv sync` once before using.
 
 Exit codes:
   0 — all manifests present and valid
@@ -40,12 +39,48 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 SCHEMA_PATH = REPO_ROOT / ".github" / "schemas" / "manifest-schema.json"
 MANIFEST_FILENAME = "manifest.yaml"
-RECIPE_ROOTS = ["core", "contrib"]
+# Top-level directories that may hold recipes. `skills/` is scaffolded ahead
+# of that folder actually existing on disk — _collect_root() prints a
+# harmless [SKIP] line when the directory is missing, so listing it here is
+# safe today and lets the validation tooling pick up skills the moment they
+# land without another code change.
+RECIPE_ROOTS = ["core", "contrib", "skills"]
 
 OWNERSHIP_TEAM_PLACEHOLDER = "TODO: Replace with your team name"
 OWNERSHIP_POC_PLACEHOLDER = "TODO: Replace with your GitHub user ID"
 
 LANGUAGE_NAMESPACE_DIRS = {"python", "java", "go", "typescript", "kotlin"}
+
+# Roots whose second path component is ALWAYS a namespace, whatever it is
+# called. core/ and contrib/ take an OPTIONAL language namespace, matched by
+# name against LANGUAGE_NAMESPACE_DIRS. skills/ takes a MANDATORY vertical
+# (retail/, hr/, finance/ …) whose name is free-form, so it can only be
+# recognised by position:
+#
+#     core/<language>/<recipe>   or   core/<recipe>
+#     skills/<vertical>/<solution>
+#
+# The vertical surfaces ownership — it lets a team see its whole surface at
+# a glance — so it is part of the layout rather than a value we enumerate.
+NAMESPACE_REQUIRED_ROOTS = {"skills"}
+
+
+def is_namespace_path(parts: list[str]) -> bool:
+    """True if these repo-relative path components identify a namespace
+    directory — a container of recipes — rather than a recipe itself.
+
+    Depth matters: only the component directly under a recipe root can be a
+    namespace, which is what keeps `skills/retail` (a vertical) distinct
+    from `skills/retail/store-ops` (a solution).
+    """
+    if len(parts) != 2:
+        return False
+    root, name = parts
+    if root not in RECIPE_ROOTS:
+        return False
+    if root in NAMESPACE_REQUIRED_ROOTS:
+        return True
+    return name in LANGUAGE_NAMESPACE_DIRS
 
 
 def is_recipe_dir(path: Path) -> bool:
@@ -57,8 +92,22 @@ def is_recipe_dir(path: Path) -> bool:
     # they are containers whose children are the actual recipes.
     if path.name in LANGUAGE_NAMESPACE_DIRS:
         return False
-    children = [p for p in path.iterdir() if p.name != "README.md"]
-    return len(children) > 0
+    children = [
+        p
+        for p in path.iterdir()
+        if not p.name.startswith(".") and p.name != "README.md"
+    ]
+    if not children:
+        return False
+    # Defence-in-depth: a directory whose non-hidden, non-README children are
+    # ALL language namespace dirs (`python/`, `java/`, …) is treated as an
+    # organisational container, not a recipe. A real recipe always has at
+    # least one file (manifest.yaml, README.md, agent code) at its root, so
+    # this exclusion never fires for a valid recipe — it only guards against
+    # accidental structures being promoted to recipes.
+    if all(p.is_dir() and p.name in LANGUAGE_NAMESPACE_DIRS for p in children):
+        return False
+    return True
 
 
 def load_schema() -> dict:
@@ -90,16 +139,94 @@ def validate_manifest(manifest_path: Path, schema: dict) -> list[str]:
         if isinstance(ownership, dict):
             if ownership.get("team") == OWNERSHIP_TEAM_PLACEHOLDER:
                 errors.append(
-                    f'  [ownership.team] is still set to the placeholder value '
-                    f'"{OWNERSHIP_TEAM_PLACEHOLDER}". Please replace it with a real team name.'
+                    "  [ownership.team] is still set to the placeholder value "
+                    f'"{OWNERSHIP_TEAM_PLACEHOLDER}". '
+                    "Please replace it with a real team name."
                 )
             if ownership.get("poc") == OWNERSHIP_POC_PLACEHOLDER:
                 errors.append(
-                    f'  [ownership.poc] is still set to the placeholder value '
-                    f'"{OWNERSHIP_POC_PLACEHOLDER}". Please replace it with a real GitHub ID.'
+                    "  [ownership.poc] is still set to the placeholder value "
+                    f'"{OWNERSHIP_POC_PLACEHOLDER}". '
+                    "Please replace it with a real GitHub ID."
                 )
 
+        # A description left as a "TODO ..." placeholder (e.g. the scaffold
+        # template's default) is long enough to satisfy the schema's
+        # minLength, so it would otherwise slip through. Guard it explicitly,
+        # mirroring the ownership checks above. A prefix match (rather than an
+        # exact string) keeps this robust to wording changes and catches any
+        # hand-written "TODO ..." description too.
+        description = data.get("description")
+        if isinstance(
+            description, str
+        ) and description.strip().upper().startswith("TODO"):
+            errors.append(
+                "  [description] is still a TODO placeholder. Please replace "
+                "it with a real description of what the recipe demonstrates."
+            )
+
     return errors
+
+
+def _collect_scoped_path(scope: str) -> list[Path]:
+    """Resolve a scope that points at a specific path (not a bare root).
+
+    Handles a language namespace dir (recurse one level) or a single recipe
+    directory. Exits the process on an invalid path.
+    """
+    target = REPO_ROOT / scope
+    if not target.exists():
+        print(f"[ERROR] Directory not found: {target}")
+        sys.exit(1)
+    # Namespace directory (e.g. core/python, skills/retail) — recurse one
+    # level. Matched on the scope's own components rather than just the
+    # basename, so `skills/retail` is a namespace while the solution beneath
+    # it, `skills/retail/store-ops`, is not.
+    if is_namespace_path(scope.strip("/").split("/")):
+        recipe_dirs = sorted(c for c in target.iterdir() if is_recipe_dir(c))
+        if not recipe_dirs:
+            print(f"[INFO] No recipe directories found under '{scope}/'.")
+        return recipe_dirs
+    if not is_recipe_dir(target):
+        print(f"[ERROR] Not a valid recipe directory: {target}")
+        sys.exit(1)
+    return [target]
+
+
+def _collect_root(root_name: str) -> list[Path]:
+    """Return the recipe directories directly under a top-level root.
+
+    Recognised layouts:
+        <root>/<recipe>              — flat (core/, contrib/)
+        <root>/<language>/<recipe>   — language-namespaced (core/, contrib/)
+        skills/<vertical>/<solution> — vertical-namespaced (skills/)
+
+    Under a NAMESPACE_REQUIRED_ROOTS root every child is a namespace, so a
+    solution placed directly at `skills/<solution>` is not collected here.
+    That misplacement is reported by tools/validate_placement.py rather
+    than silently validated at the wrong depth.
+    """
+    root_path = REPO_ROOT / root_name
+    if not root_path.exists():
+        print(f"[SKIP] '{root_name}/' does not exist.")
+        return []
+
+    recipe_dirs: list[Path] = []
+    for p in sorted(root_path.iterdir()):
+        if not p.is_dir():
+            continue
+        if is_namespace_path([root_name, p.name]):
+            # <root>/<language>/<recipe> or skills/<vertical>/<solution>
+            recipe_dirs.extend(
+                sorted(c for c in p.iterdir() if is_recipe_dir(c))
+            )
+        elif is_recipe_dir(p):
+            # <root>/<recipe> (flat)
+            recipe_dirs.append(p)
+
+    if not recipe_dirs:
+        print(f"[INFO] No recipe directories found under '{root_name}/'.")
+    return recipe_dirs
 
 
 def collect_recipe_dirs(scope: str | None) -> list[Path]:
@@ -112,48 +239,16 @@ def collect_recipe_dirs(scope: str | None) -> list[Path]:
       "core/some-recipe"        — a single flat recipe directory
       "core/python/some-recipe" — a single namespaced recipe directory
     """
-    # Resolve scope roots to scan
     if scope is None or scope == "all":
         roots_to_scan = RECIPE_ROOTS
     elif scope in RECIPE_ROOTS:
         roots_to_scan = [scope]
     else:
-        target = REPO_ROOT / scope
-        if not target.exists():
-            print(f"[ERROR] Directory not found: {target}")
-            sys.exit(1)
-        # Language namespace directory (e.g. core/python) — recurse one level.
-        # is_recipe_dir() already returns False for these, so we handle them
-        # explicitly here before the generic validity check below.
-        if target.name in LANGUAGE_NAMESPACE_DIRS:
-            recipe_dirs = sorted(c for c in target.iterdir() if is_recipe_dir(c))
-            if not recipe_dirs:
-                print(f"[INFO] No recipe directories found under '{scope}/'.")
-            return recipe_dirs
-        if not is_recipe_dir(target):
-            print(f"[ERROR] Not a valid recipe directory: {target}")
-            sys.exit(1)
-        return [target]
+        return _collect_scoped_path(scope)
 
-    dirs = []
+    dirs: list[Path] = []
     for root_name in roots_to_scan:
-        root_path = REPO_ROOT / root_name
-        if not root_path.exists():
-            print(f"[SKIP] '{root_name}/' does not exist.")
-            continue
-        recipe_dirs = []
-        for p in sorted(root_path.iterdir()):
-            if p.is_dir() and p.name in LANGUAGE_NAMESPACE_DIRS:
-                # Language namespace folder (e.g. core/python/) — recurse one level.
-                recipe_dirs.extend(
-                    sorted(c for c in p.iterdir() if is_recipe_dir(c))
-                )
-            elif is_recipe_dir(p):
-                recipe_dirs.append(p)
-        if not recipe_dirs:
-            print(f"[INFO] No recipe directories found under '{root_name}/'.")
-            continue
-        dirs.extend(recipe_dirs)
+        dirs.extend(_collect_root(root_name))
     return dirs
 
 
@@ -184,9 +279,11 @@ def main(scope: str | None = None) -> int:
         for d in missing:
             print(f"  - {d}/")
             # GitHub Actions annotation — surfaces in the PR Files tab
-            print(f"::error file={d}/manifest.yaml::manifest.yaml is missing. "
-                  "Create one using the schema at "
-                  ".github/schemas/manifest-schema.json")
+            print(
+                f"::error file={d}/manifest.yaml::manifest.yaml is missing. "
+                "Create one using the schema at "
+                ".github/schemas/manifest-schema.json"
+            )
 
     if invalid:
         passed = False
@@ -197,9 +294,11 @@ def main(scope: str | None = None) -> int:
                 print(f"    {e}")
             # Emit one annotation per file pointing at the manifest
             first_error = errors[0].strip()
-            print(f"::error file={path}::{first_error} "
-                  f"(+{len(errors) - 1} more)" if len(errors) > 1
-                  else f"::error file={path}::{first_error}")
+            print(
+                f"::error file={path}::{first_error} (+{len(errors) - 1} more)"
+                if len(errors) > 1
+                else f"::error file={path}::{first_error}"
+            )
 
     if not passed:
         print(
@@ -211,19 +310,11 @@ def main(scope: str | None = None) -> int:
             "\n"
             "\nReference:"
             "\n  Schema:  .github/schemas/manifest-schema.json"
-            "\n  Example: core/rag-agent-search/manifest.yaml"
-            "\n"
-            "\nCommon mistakes:"
-            "\n  - Missing required fields (type, status, language, description, ownership)"
-            "\n  - ownership.team or ownership.poc left as placeholder values"
-            "\n  - Invalid enum value for 'type', 'status', or 'language'"
         )
         return 1
 
     checked = len(recipe_dirs)
-    print(
-        f"\n[PASS] All {checked} recipe manifest(s) are present and valid."
-    )
+    print(f"\n[PASS] All {checked} recipe manifest(s) are present and valid.")
     return 0
 
 
