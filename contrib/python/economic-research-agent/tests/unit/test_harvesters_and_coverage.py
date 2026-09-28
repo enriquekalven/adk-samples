@@ -1,31 +1,48 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Unit tests for Evolved Serper and EIA API Harvesters, and expanded tools coverage.
 Created autonomously by AlphaEvolve.
 """
 
 import json
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-import us
 
+from economic_research.tools.climate_resilience_skill import (
+    get_climate_risk_index,
+)
 from economic_research.tools.dynamic_search_harvester import (
-    harvest_real_estate_roi,
-    harvest_climate_risk,
-    harvest_logistics_efficiency,
-    harvest_cultural_amenities,
-    harvest_regional_incentives,
     execute_serper_search,
-    harvest_semantic_schema
+    harvest_climate_risk,
+    harvest_cultural_amenities,
+    harvest_logistics_efficiency,
+    harvest_real_estate_roi,
+    harvest_regional_incentives,
+    harvest_semantic_schema,
+)
+from economic_research.tools.lifestyle_logistics_incentives_skills import (
+    get_cultural_amenity_score,
+    get_logistics_efficiency,
+    get_regional_tax_incentives,
 )
 from economic_research.tools.real_estate_skill import get_real_estate_roi
-from economic_research.tools.climate_resilience_skill import get_climate_risk_index
-from economic_research.tools.lifestyle_logistics_incentives_skills import (
-    get_logistics_efficiency,
-    get_cultural_amenity_score,
-    get_regional_tax_incentives
+from economic_research.tools.utility_logistics_skill import (
+    get_industrial_infrastructure_stats,
 )
-from economic_research.tools.utility_logistics_skill import get_industrial_infrastructure_stats
 
 
 @pytest.fixture
@@ -33,30 +50,36 @@ def mock_genai_client():
     with patch("google.genai.Client") as MockClient:
         mock_instance = MockClient.return_value
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "Avg Lease (PSF)": "$40.00",
-            "Vacancy Rate": "10.0%",
-            "Overall Risk Rating": "Very High",
-            "Primary Hazard (Heat)": "High",
-            "Primary Hazard (Flood)": "Low",
-            "Intermodal Hub Access": "Tier 1",
-            "Shipping Cost Index (Lower=Better)": "95",
-            "Transit Reliability Rate": "90%",
-            "Walkability Score (0-100)": "75",
-            "Amenity/Cultural Density": "High",
-            "Safety Rating (FBI UCR)": "Very High",
-            "Top Incentive Program": "Mock State Credit",
-            "Estimated Subsidy Yield": "High Yield",
-            "Statutory Corporate Credits": "Mock Credit A, B"
-        })
+        mock_response.text = json.dumps(
+            {
+                "Avg Lease (PSF)": "$40.00",
+                "Vacancy Rate": "10.0%",
+                "Overall Risk Rating": "Very High",
+                "Primary Hazard (Heat)": "High",
+                "Primary Hazard (Flood)": "Low",
+                "Intermodal Hub Access": "Tier 1",
+                "Shipping Cost Index (Lower=Better)": "95",
+                "Transit Reliability Rate": "90%",
+                "Walkability Score (0-100)": "75",
+                "Amenity/Cultural Density": "High",
+                "Safety Rating (FBI UCR)": "Very High",
+                "Top Incentive Program": "Mock State Credit",
+                "Estimated Subsidy Yield": "High Yield",
+                "Statutory Corporate Credits": "Mock Credit A, B",
+            }
+        )
         mock_instance.models.generate_content.return_value = mock_response
         yield MockClient
 
 
 @pytest.fixture
 def mock_serper_search():
-    with patch("economic_research.tools.dynamic_search_harvester.execute_serper_search") as MockSerper:
-        MockSerper.return_value = '{"organic": [{"snippet": "Mocked Serper Google Search Result"}]}'
+    with patch(
+        "economic_research.tools.dynamic_search_harvester.execute_serper_search"
+    ) as MockSerper:
+        MockSerper.return_value = (
+            '{"organic": [{"snippet": "Mocked Serper Google Search Result"}]}'
+        )
         yield MockSerper
 
 
@@ -68,10 +91,16 @@ def test_execute_serper_search_no_key():
 
 def test_harvest_semantic_schema_fallback(mock_genai_client):
     # If serper returns empty, should immediately trigger fallbacks
-    with patch("economic_research.tools.dynamic_search_harvester.execute_serper_search", return_value="{}"):
+    with patch(
+        "economic_research.tools.dynamic_search_harvester.execute_serper_search",
+        return_value="{}",
+    ):
         fallbacks = {"Avg Lease (PSF)": "$12.00", "Vacancy Rate": "15.0%"}
         res = harvest_semantic_schema(
-            "Query", "Instruction", ["Avg Lease (PSF)", "Vacancy Rate"], fallbacks
+            "Query",
+            "Instruction",
+            ["Avg Lease (PSF)", "Vacancy Rate"],
+            fallbacks,
         )
         assert res == fallbacks
 
@@ -127,21 +156,27 @@ def test_get_climate_risk_index_adapter(mock_serper_search, mock_genai_client):
     assert data[0]["City"] == "Miami"
 
 
-def test_get_logistics_efficiency_adapter(mock_serper_search, mock_genai_client):
+def test_get_logistics_efficiency_adapter(
+    mock_serper_search, mock_genai_client
+):
     raw = get_logistics_efficiency(["Raleigh, NC"])
     data = json.loads(raw)
     assert len(data) == 1
     assert data[0]["City"] == "Raleigh"
 
 
-def test_get_cultural_amenity_score_adapter(mock_serper_search, mock_genai_client):
+def test_get_cultural_amenity_score_adapter(
+    mock_serper_search, mock_genai_client
+):
     raw = get_cultural_amenity_score(["Boulder, CO"])
     data = json.loads(raw)
     assert len(data) == 1
     assert data[0]["City"] == "Boulder"
 
 
-def test_get_regional_tax_incentives_adapter(mock_serper_search, mock_genai_client):
+def test_get_regional_tax_incentives_adapter(
+    mock_serper_search, mock_genai_client
+):
     raw = get_regional_tax_incentives(["Texas"])
     data = json.loads(raw)
     assert len(data) == 1
@@ -149,15 +184,21 @@ def test_get_regional_tax_incentives_adapter(mock_serper_search, mock_genai_clie
 
 
 def test_get_industrial_infrastructure_stats():
-    with patch("economic_research.tools.eia_skill.fetch_state_electricity_rates") as MockEIA:
-        MockEIA.return_value = json.dumps([{
-            "State": "TX",
-            "Sector": "Industrial",
-            "Avg Price (cents/kWh)": "8.50",
-            "Period": "2024-03",
-            "Source": "Mock"
-        }])
-        
+    with patch(
+        "economic_research.tools.eia_skill.fetch_state_electricity_rates"
+    ) as MockEIA:
+        MockEIA.return_value = json.dumps(
+            [
+                {
+                    "State": "TX",
+                    "Sector": "Industrial",
+                    "Avg Price (cents/kWh)": "8.50",
+                    "Period": "2024-03",
+                    "Source": "Mock",
+                }
+            ]
+        )
+
         raw = get_industrial_infrastructure_stats(["Texas"])
         data = json.loads(raw)
         assert len(data) == 1

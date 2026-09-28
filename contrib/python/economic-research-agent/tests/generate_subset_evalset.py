@@ -1,45 +1,75 @@
-# Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Generates a subset of 42 queries from the full 900-query stress test evalset."""
 
 import json
 
+
 def generate_subset():
     with open("tests/eval/evalsets/wow_stress_test.evalset.json") as f:
         full = json.load(f)
-        
+
     cases = full["eval_cases"]
-    
+
     # We will pick 2 cases from each of the 16 sources, plus 5 cross-source, plus 5 anthropic analyst cases.
     subset_cases = []
-    
+
     sources = [
-        "fred", "bea", "census", "hud", "bls", "fec", "usitc", "eia", 
-        "register", "tax_f", "workforce", "mls_sourcing", "usps_cross", 
-        "chas", "labor_shifts", "anthropic_index"
+        "fred",
+        "bea",
+        "census",
+        "hud",
+        "bls",
+        "fec",
+        "usitc",
+        "eia",
+        "register",
+        "tax_f",
+        "workforce",
+        "mls_sourcing",
+        "usps_cross",
+        "chas",
+        "labor_shifts",
+        "anthropic_index",
     ]
-    
+
     for src in sources:
         # filter cases starting with this source prefix
         src_cases = [c for c in cases if c["eval_id"].startswith(src)]
         subset_cases.extend(src_cases[:2])
-        
+
     cross_cases = [c for c in cases if c["eval_id"].startswith("cross_source")]
     subset_cases.extend(cross_cases[:5])
-    
-    anthropic_cases = [c for c in cases if c["eval_id"].startswith("anthropic_analyst")]
+
+    anthropic_cases = [
+        c for c in cases if c["eval_id"].startswith("anthropic_analyst")
+    ]
     subset_cases.extend(anthropic_cases[:5])
-    
+
     subset = {
         "eval_set_id": "wow_subset_test",
         "name": "Economic Research Agent 42 Query Verification Subset",
         "description": "Verification subset covering 2 cases per source, 5 cross-source, and 5 Anthropic analyst cases.",
-        "eval_cases": subset_cases
+        "eval_cases": subset_cases,
     }
-    
+
     with open("tests/eval/evalsets/wow_subset_test.evalset.json", "w") as f:
         json.dump(subset, f, indent=2)
-        
+
     print(f"Created subset of {len(subset_cases)} cases successfully!")
+
 
 if __name__ == "__main__":
     generate_subset()

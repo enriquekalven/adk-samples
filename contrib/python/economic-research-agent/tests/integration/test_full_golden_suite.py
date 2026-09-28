@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ERA 21-Question Golden Integration Suite (ADK 2.0 Hardened)."""
 
 import pytest
@@ -130,7 +143,9 @@ def test_golden_suite_scenario(runner, scenario):
                     responses.append(part.text)
 
     full_response = "".join(responses)
-    print(f"\n--- REPORT FOR {scenario['source']} ---\n{full_response}\n-------------------\n")
+    print(
+        f"\n--- REPORT FOR {scenario['source']} ---\n{full_response}\n-------------------\n"
+    )
 
     # Assertions for High-Fidelity Consulting
     assert len(full_response) > 50, (
@@ -141,7 +156,16 @@ def test_golden_suite_scenario(runner, scenario):
     )
 
     # Verify sources are cited or agent correctly declared limitations/declined
-    declined_keywords = ["cannot directly", "do not have access", "limitations", "unverifiable", "error", "unable to retrieve", "does not utilize", "did not find"]
+    declined_keywords = [
+        "cannot directly",
+        "do not have access",
+        "limitations",
+        "unverifiable",
+        "error",
+        "unable to retrieve",
+        "does not utilize",
+        "did not find",
+    ]
     assert any(
         keyword in full_response
         for keyword in [
@@ -163,9 +187,10 @@ def test_golden_suite_scenario(runner, scenario):
             "Federal Register",
         ]
     ) or any(
-        keyword in full_response.lower()
-        for keyword in declined_keywords
-    ), f"Missing source citation or limitation notice in {scenario['source']} response."
+        keyword in full_response.lower() for keyword in declined_keywords
+    ), (
+        f"Missing source citation or limitation notice in {scenario['source']} response."
+    )
 
     print(f"✅ Success for {scenario['source']}")
 

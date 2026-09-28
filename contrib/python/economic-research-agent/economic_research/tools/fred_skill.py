@@ -1,13 +1,27 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty
-#  or representation for any use or purpose. Your use of it is subject to your
-#  agreement with Google.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: FRED Macro Data (St. Louis Fed). Replaces BigQuery with direct API calls."""
 
 import json
+import logging
 import os
 
 from fredapi import Fred
 from pydantic import BaseModel, Field
+
+from economic_research.shared_libraries.helper import get_session_api_key
 
 
 class FredRegionalRequest(BaseModel):
@@ -28,7 +42,7 @@ def fetch_regional_macro_stats(
     Fetches regional economic metrics directly from St. Louis Fed (FRED) API.
     Replaces legacy BigQuery labor tables. Support MSAs like Austin, Raleigh, etc.
     """
-    fred_key = os.getenv("FRED_API_KEY")
+    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
     if not fred_key:
         return "ERROR: FRED_API_KEY is not set in environment variables."
 
@@ -126,7 +140,10 @@ def fetch_regional_macro_stats(
                         "Source": f"FRED ({series_id})",
                     }
                 )
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug(
+                "FRED lookup failed for %s: %s", city, exc
+            )
             continue
 
     if not results:

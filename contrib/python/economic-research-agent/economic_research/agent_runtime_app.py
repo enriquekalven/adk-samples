@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from vertexai.preview.reasoning_engines import AdkApp
+
 from economic_research.agent import ERAAgent
 
 # Instantiate the agent

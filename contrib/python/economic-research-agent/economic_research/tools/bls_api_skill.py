@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Bureau of Labor Statistics (BLS). Employment & Unionization metrics."""
 
 import json
@@ -6,13 +19,18 @@ import os
 
 import requests
 
+from economic_research.shared_libraries.helper import get_session_api_key
+
+
 def fetch_bls_series_data(
     series_ids: list[str], start_year: str = "2023", end_year: str = "2024"
 ) -> str:
     """
     Fetches live labor statistics from the BLS (Bureau of Labor Statistics) API v2.
     """
-    bls_key = os.getenv("BLS_API_KEY", "").strip()
+    bls_key = (
+        get_session_api_key("BLS_API_KEY", os.getenv("BLS_API_KEY")) or ""
+    ).strip()
     url = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
     headers = {"Content-type": "application/json"}
@@ -44,15 +62,15 @@ def fetch_bls_series_data(
                 series_id = series.get("seriesID")
                 observations = series.get("data", [])
 
-                latestValue = "N/A"
+                latest_value = "N/A"
                 if observations:
                     latest = observations[0]
-                    latestValue = f"{latest.get('value')} ({latest.get('periodName')} {latest.get('year')})"
+                    latest_value = f"{latest.get('value')} ({latest.get('periodName')} {latest.get('year')})"
 
                 results.append(
                     {
                         "Series ID": series_id,
-                        "Current Value": latestValue,
+                        "Current Value": latest_value,
                         "Status": "Success",
                         "Source": "U.S. Bureau of Labor Statistics (Live API)",
                     }

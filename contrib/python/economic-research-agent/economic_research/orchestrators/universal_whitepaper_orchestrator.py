@@ -11,22 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Universal Whitepaper Generation Orchestrator.
 Features an Adaptive LLM Router that classifies the user's research topic into one of 4 Strategic Pillars and dispatches tailored, high-fidelity data harvesting and synthesis prompts to generate premium corporate whitepapers for ANY 'Wow Factor' query in the README.
 """
 
 import json
 import logging
-import math
 import os
-import re
-import sys
-from typing import Any, Mapping
-
-logger = logging.getLogger(__name__)
+from collections.abc import Mapping
+from typing import Any
 
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 
 def classify_topic(topic: str) -> dict:
@@ -55,12 +54,14 @@ def classify_topic(topic: str) -> dict:
             contents=router_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
-            )
+            ),
         )
         data = json.loads(response.text.strip())
         return data
     except Exception as e:
-        logger.warning(f"Topic classification failed: {e}. Falling back to SITE_SELECTION.")
+        logger.warning(
+            f"Topic classification failed: {e}. Falling back to SITE_SELECTION."
+        )
         return {"pillar": "A", "rationale": "Fallback"}
 
 
@@ -69,7 +70,7 @@ def get_adaptive_prompts(pillar: str, topic: str) -> tuple[str, str]:
     Returns the tailored Phase 1 (Harvesting) and Phase 2 (Synthesis) prompts based on the Strategic Pillar.
     """
     clean_pillar = str(pillar).strip().upper()
-    
+
     if clean_pillar == "B" or "REAL_ESTATE" in clean_pillar:
         harvest_prompt = f"""
         Gather raw data and listings for the real estate investment query: "{topic}".
@@ -95,7 +96,7 @@ def get_adaptive_prompts(pillar: str, topic: str) -> tuple[str, str]:
         # Strategic SWOT & Acquisition Recommendations
         # Sources & Citations
         """
-        
+
     elif clean_pillar == "C" or "WORKFORCE_AI" in clean_pillar:
         harvest_prompt = f"""
         Gather raw data and task analysis for the workforce AI exposure query: "{topic}".
@@ -121,7 +122,7 @@ def get_adaptive_prompts(pillar: str, topic: str) -> tuple[str, str]:
         # Strategic HR & Operational SWOT Recommendations
         # Sources & Citations
         """
-        
+
     elif clean_pillar == "D" or "FISCAL_TRADE_POLICY" in clean_pillar:
         harvest_prompt = f"""
         Gather raw data for the policy, fiscal, and supply chain query: "{topic}".
@@ -147,8 +148,8 @@ def get_adaptive_prompts(pillar: str, topic: str) -> tuple[str, str]:
         # Strategic Supply Chain, Tax Mitigation & SWOT Recommendations
         # Sources & Citations
         """
-        
-    else: # Pillar A: SITE_SELECTION
+
+    else:  # Pillar A: SITE_SELECTION
         harvest_prompt = f"""
         Gather raw data for the corporate relocation and site-selection comparison: "{topic}".
         Specifically, find and output:
@@ -175,7 +176,7 @@ def get_adaptive_prompts(pillar: str, topic: str) -> tuple[str, str]:
         # Strategic SWOT Recommendations
         # Sources & Citations
         """
-        
+
     return harvest_prompt, synth_prompt
 
 
@@ -189,18 +190,20 @@ def solve(eval_inputs: Mapping[str, Any]) -> str:
 
     try:
         from economic_research.agent import export_agent
-        
+
         # Step 1: Adaptive Pillar Routing
         routing_info = classify_topic(topic)
         pillar = routing_info.get("pillar", "A")
-        logger.info(f"🧬 Routed Topic '{topic}' to Pillar: {pillar} ({routing_info.get('rationale')})")
-        
+        logger.info(
+            f"🧬 Routed Topic '{topic}' to Pillar: {pillar} ({routing_info.get('rationale')})"
+        )
+
         harvest_prompt, synth_prompt = get_adaptive_prompts(pillar, topic)
-        
+
         # Step 2: Adaptive Data Harvesting
         print(f"🚀 [Phase 1] Harvesting Data for Pillar {pillar}...")
         raw_research_data = export_agent.query(harvest_prompt)
-        
+
         # Step 3: Adaptive McKinsey/PE Synthesis
         print(f"🚀 [Phase 2] Synthesizing Whitepaper for Pillar {pillar}...")
         synthesis_input = f"""
@@ -209,12 +212,13 @@ def solve(eval_inputs: Mapping[str, Any]) -> str:
         RAW RESEARCH DATA GATHERED:
         {raw_research_data}
         """
-        
+
         final_whitepaper = export_agent.query(synthesis_input)
         return final_whitepaper
-        
+
     except Exception as e:
         import traceback
+
         tb_str = traceback.format_exc()
         logger.error(f"Failed Universal Whitepaper Orchestration: {tb_str}")
         return f"Error executing universal whitepaper pipeline: {e}"

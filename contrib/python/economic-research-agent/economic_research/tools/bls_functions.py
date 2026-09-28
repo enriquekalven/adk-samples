@@ -1,6 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty
-#  or representation for any use or purpose. Your use of it is subject to your
-#  agreement with Google.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tools for Bureau of Labor Statistics (Internal Logic)."""
 
 import json
@@ -9,6 +20,8 @@ from typing import Any
 
 import pandas as pd
 from fredapi import Fred
+
+from economic_research.shared_libraries.helper import get_session_api_key
 
 from .tax_foundation_skill import fetch_state_tax_rates
 
@@ -64,7 +77,7 @@ def find_median_hourly_wages(
         median_hourly_wages: A Pandas Dataframe containing the hourly
             wages per hour.
     """
-    fred_key = os.getenv("FRED_API_KEY")
+    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
     fred = Fred(api_key=fred_key)
 
     results = []
@@ -107,7 +120,7 @@ def find_state_union_employment(
         union_employment_rate: A Pandas Dataframe containing the hourly
             state union employment rates.
     """
-    fred_key = os.getenv("FRED_API_KEY")
+    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
     fred = Fred(api_key=fred_key)
 
     results = []

@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Census ACS. Demographic & Educational Attainment."""
 
 import json
@@ -6,12 +19,17 @@ import os
 
 import requests
 
+from economic_research.shared_libraries.helper import get_session_api_key
+
+
 def fetch_census_education_stats(city_names: list[str]) -> str:
     """
     Fetches real educational attainment statistics from the Census ACS API.
     Essential for talent-pipeline assessments in site selection.
     """
-    c_key = os.getenv("CENSUS_API_KEY", "").strip()
+    c_key = (
+        get_session_api_key("CENSUS_API_KEY", os.getenv("CENSUS_API_KEY")) or ""
+    ).strip()
     census_key = c_key.replace('"', "").replace("'", "")
     if not census_key:
         return json.dumps(

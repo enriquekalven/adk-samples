@@ -1,10 +1,29 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Bureau of Economic Analysis (BEA). Regional & National GDP/Income."""
 
 import json
+import logging
 import os
 
 import requests
+
+from economic_research.shared_libraries.helper import get_session_api_key
+
+logger = logging.getLogger(__name__)
+
 
 def fetch_bea_regional_data(
     metro_names: list[str], report_type: str = "GDP"
@@ -13,7 +32,9 @@ def fetch_bea_regional_data(
     Fetches regional economic data (GDP or Personal Income) directly from the BEA API.
     Essential for high-fidelity regional economic health assessments.
     """
-    h_key = os.getenv("BEA_API_KEY", "").strip()
+    h_key = (
+        get_session_api_key("BEA_API_KEY", os.getenv("BEA_API_KEY")) or ""
+    ).strip()
     bea_key = h_key.replace('"', "").replace("'", "")
     if not bea_key:
         return json.dumps(
@@ -80,23 +101,38 @@ def fetch_bea_regional_data(
                             )
                         else:
                             # Fallback to FRED for MSA FIPS
-                            from economic_research.tools.fred_skill import fetch_regional_macro_stats
+                            from economic_research.tools.fred_skill import (
+                                fetch_regional_macro_stats,
+                            )
+
                             try:
-                                fred_res = fetch_regional_macro_stats([city], series_type="gdp")
-                                if "ERROR" not in fred_res and "No FRED data" not in fred_res:
+                                fred_res = fetch_regional_macro_stats(
+                                    [city], series_type="gdp"
+                                )
+                                if (
+                                    "ERROR" not in fred_res
+                                    and "No FRED data" not in fred_res
+                                ):
                                     fred_data = json.loads(fred_res)
                                     if fred_data:
                                         item = fred_data[0]
-                                        results.append({
-                                            "City": city,
-                                            "Metric": f"Real {report_type} (Millions $)",
-                                            "Value": f"${item['Latest Value']}",
-                                            "Year": item['Latest Date'].split("-")[0],
-                                            "Source": item['Source'] + " (BEA MSA Fallback)"
-                                        })
+                                        results.append(
+                                            {
+                                                "City": city,
+                                                "Metric": f"Real {report_type} (Millions $)",
+                                                "Value": f"${item['Latest Value']}",
+                                                "Year": item[
+                                                    "Latest Date"
+                                                ].split("-")[0],
+                                                "Source": item["Source"]
+                                                + " (BEA MSA Fallback)",
+                                            }
+                                        )
                                         continue
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug(
+                                    "FRED fallback failed for %s: %s", city, exc
+                                )
 
                             results.append(
                                 {

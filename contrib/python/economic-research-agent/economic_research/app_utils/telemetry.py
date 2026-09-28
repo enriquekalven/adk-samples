@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,25 +20,32 @@ def setup_telemetry() -> str | None:
     """Configure OpenTelemetry and GenAI telemetry with GCS upload."""
 
     bucket = os.environ.get("LOGS_BUCKET_NAME")
-    capture_content = os.environ.get(
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false"
+    capture_content = (
+        os.environ.get("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
+        or "false"
     )
     if bucket and capture_content != "false":
         logging.info(
             "Prompt-response logging enabled - mode: NO_CONTENT (metadata only, no prompts/responses)"
         )
-        os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "NO_CONTENT"
-        os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT", "jsonl")
-        os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK", "upload")
+        os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = (
+            "NO_CONTENT"
+        )
+        os.environ.setdefault(
+            "OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT", "jsonl"
+        )
+        os.environ.setdefault(
+            "OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK", "upload"
+        )
         os.environ.setdefault(
             "OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental"
         )
-        commit_sha = os.environ.get("COMMIT_SHA", "dev")
+        commit_sha = os.environ.get("COMMIT_SHA") or "dev"
         os.environ.setdefault(
             "OTEL_RESOURCE_ATTRIBUTES",
             f"service.namespace=economic-research-agent,service.version={commit_sha}",
         )
-        path = os.environ.get("GENAI_TELEMETRY_PATH", "completions")
+        path = os.environ.get("GENAI_TELEMETRY_PATH") or "completions"
         os.environ.setdefault(
             "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH",
             f"gs://{bucket}/{path}",

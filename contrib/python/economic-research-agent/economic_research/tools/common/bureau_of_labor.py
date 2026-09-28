@@ -1,6 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty
-#  or representation for any use or purpose. Your use of it is subject to your
-#  agreement with Google.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Bureau of Labor statistics functions (Internal Tool Logic)."""
 
 import os
@@ -10,8 +21,8 @@ import pandas as pd
 
 from economic_research.shared_libraries.helper import execute_bq_query_to_df
 
-PROJECT_ID = os.getenv("PROJECT_ID", "economic-research-agent")
-LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET", "bls")
+PROJECT_ID = os.getenv("PROJECT_ID") or "economic-research-agent"
+LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET") or "bls"
 
 
 def get_labor_force_stats(city_names: list[str]):
@@ -34,7 +45,7 @@ def get_labor_force_stats(city_names: list[str]):
         LOWER({column_name_to_match}),
         '{city_names_regex}'
     );
-    """
+    """  # noqa: S608
 
     labor_force_stats = execute_bq_query_to_df(
         project=PROJECT_ID, query=labor_query
@@ -74,7 +85,7 @@ def get_state_tax_rates(metros: list[dict[str, Any]], drop_state: bool = True):
         source
     FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{state_tax_table}`
     WHERE {column_name_to_match} IN UNNEST({states})
-    """
+    """  # noqa: S608
 
     state_tax_bq_results = execute_bq_query_to_df(
         project=PROJECT_ID, query=state_tax_query
@@ -116,7 +127,7 @@ def get_union_employment(metros: list[dict[str, Any]], drop_state: bool = True):
         source
     FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{union_table}`
     WHERE {column_name_to_match} IN UNNEST({states})
-    """
+    """  # noqa: S608
 
     state_union_employement = execute_bq_query_to_df(
         project=PROJECT_ID, query=union_employement_query
@@ -159,7 +170,7 @@ def get_median_hourly_wage(city_names: list[str]):
         LOWER({column_name_to_match}),
         '{city_names_regex}'
     );
-    """
+    """  # noqa: S608
 
     median_hourly_wages = execute_bq_query_to_df(
         project=PROJECT_ID, query=median_wage_query

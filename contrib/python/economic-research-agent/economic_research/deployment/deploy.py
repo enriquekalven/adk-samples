@@ -1,19 +1,32 @@
-# Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Modernized Deployment script for Economic Research Agent using Vertex AI Agent Engine (ADK 2.1+).
 """
 
+import datetime
+import json
 import logging
 import os
+from typing import Any
 
 import cloudpickle
 import vertexai
+from dotenv import set_key
 from vertexai import agent_engines
 from vertexai.preview.reasoning_engines import AdkApp
-import json
-import datetime
-from typing import Any
-from dotenv import set_key
 
 import economic_research
 from economic_research.agent import ERAAgent
@@ -21,13 +34,17 @@ from economic_research.agent import ERAAgent
 logging.getLogger("google.cloud.aiplatform").setLevel(logging.DEBUG)
 cloudpickle.register_pickle_by_value(economic_research)
 
+
 def update_env_file(agent_engine_id: str, env_file_path: str):
     """Updates the .env file with the agent engine ID."""
     try:
         set_key(env_file_path, "AGENT_ENGINE_ID", agent_engine_id)
-        print(f"Updated AGENT_ENGINE_ID in {env_file_path} to {agent_engine_id}")
+        print(
+            f"Updated AGENT_ENGINE_ID in {env_file_path} to {agent_engine_id}"
+        )
     except Exception as e:
         print(f"Error updating .env file: {e}")
+
 
 def write_deployment_metadata(
     remote_agent: Any,
@@ -46,14 +63,16 @@ def write_deployment_metadata(
 
     print(f"Agent Engine ID written to {metadata_file}")
 
+
 def deploy_era_to_vertex(project_id: str, location: str = "us-east1"):
     print(
         f"🚀 Initializing Modern Agent Engine Deployment for economic-research in {location}..."
     )
 
     # Defaulting to standard naming pattern for staging buckets
-    staging_bucket = os.getenv(
-        "GOOGLE_CLOUD_STORAGE_BUCKET", f"gs://{project_id}-agent-engine-v16"
+    staging_bucket = (
+        os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET")
+        or f"gs://{project_id}-agent-engine-v16"
     )
     print(f"🪣 Using staging bucket: {staging_bucket}")
 
@@ -96,12 +115,14 @@ def deploy_era_to_vertex(project_id: str, location: str = "us-east1"):
 
     print("✅ Modern Deployment Successful!")
     print(f"Agent Engine ID: {remote_agent.resource_name}")
-    
+
     # Apply fix for automatic ID picking
     env_file_path = os.path.join(project_root, ".env")
     update_env_file(remote_agent.resource_name, env_file_path)
-    write_deployment_metadata(remote_agent, os.path.join(project_root, "deployment_metadata.json"))
-    
+    write_deployment_metadata(
+        remote_agent, os.path.join(project_root, "deployment_metadata.json")
+    )
+
     return remote_agent.resource_name
 
 

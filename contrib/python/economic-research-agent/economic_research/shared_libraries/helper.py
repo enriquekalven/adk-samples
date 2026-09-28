@@ -1,10 +1,90 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty
-#  or representation for any use or purpose. Your use of it is subject to your
-#  agreement with Google.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Utility Functions for Economic Research Agent."""
+
+import os
+from contextvars import ContextVar
 
 import pandas as pd
 from google.cloud import secretmanager
+
+_SESSION_API_KEYS: ContextVar[dict[str, str] | None] = ContextVar(
+    "session_api_keys", default=None
+)
+
+
+def init_session_api_keys() -> None:
+    """Initializes a fresh mutable dictionary for the current request context."""
+    _SESSION_API_KEYS.set({})
+
+
+def get_default_model(override: str | None = None) -> str:
+    """Resolves the model identifier with a fallback to gemini-3.5-flash."""
+    candidate = override or os.getenv("MODEL_NAME")
+    if candidate and not candidate.startswith("<TODO:"):
+        return candidate
+    return "gemini-3.5-flash"
+
+
+def get_session_api_key(
+    key_name: str, env_val: str | None = None
+) -> str | None:
+    """Retrieves an API key from the current session context or environment."""
+    keys = _SESSION_API_KEYS.get()
+    if keys and key_name in keys:
+        return keys[key_name]
+    raw_val = env_val if env_val is not None else os.getenv(key_name)
+    if raw_val and not raw_val.startswith("<TODO:"):
+        return raw_val
+    return None
+
+
+def set_session_api_key(key_name: str, key_value: str) -> str:
+    """Sets an API key in the current session's isolated context.
+
+    Use this when the user provides a missing API key in the chat.
+
+    Args:
+        key_name: The name of the environment variable (e.g., 'FRED_API_KEY').
+        key_value: The API key value provided by the user.
+
+    Returns:
+        A confirmation message.
+    """
+    allowed_keys = [
+        "BEA_API_KEY",
+        "FRED_API_KEY",
+        "CENSUS_API_KEY",
+        "EIA_API_KEY",
+        "BLS_API_KEY",
+        "HUD_API_KEY",
+        "FEC_API_KEY",
+        "NEWS_API_KEY",
+        "SERPER_API_KEY",
+        "CDC_APP_TOKEN",
+        "OPENFDA_API_KEY",
+    ]
+    if key_name not in allowed_keys:
+        return f"ERROR: Setting {key_name} is not allowed."
+
+    current_keys = _SESSION_API_KEYS.get()
+    if current_keys is not None:
+        current_keys[key_name] = key_value
+    else:
+        _SESSION_API_KEYS.set({key_name: key_value})
+    return f"Successfully set {key_name} for this session. You can now retry the failed operation."
 
 
 def access_secret_version(project_id, secret_id, version_id="latest"):

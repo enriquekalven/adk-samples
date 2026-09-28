@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Infrastructure & Logistics (EIA & FCC Broadband Map)."""
 
 import json
@@ -22,36 +35,51 @@ def get_industrial_infrastructure_stats(state_names: list[str]) -> str:
 
     for state in state_names:
         import us
-        from economic_research.tools.eia_skill import fetch_state_electricity_rates
-        
+
+        from economic_research.tools.eia_skill import (
+            fetch_state_electricity_rates,
+        )
+
         state_obj = us.states.lookup(state)
         state_code = state_obj.abbr if state_obj else state.upper().strip()
-        
-        raw_eia = fetch_state_electricity_rates([state_code], sector="industrial") if len(state_code) == 2 else "{}"
+
+        raw_eia = (
+            fetch_state_electricity_rates([state_code], sector="industrial")
+            if len(state_code) == 2
+            else "{}"
+        )
         try:
             parsed_eia = json.loads(raw_eia)
-            if isinstance(parsed_eia, list) and len(parsed_eia) > 0 and "Avg Price (cents/kWh)" in parsed_eia[0]:
+            if (
+                isinstance(parsed_eia, list)
+                and len(parsed_eia) > 0
+                and "Avg Price (cents/kWh)" in parsed_eia[0]
+            ):
                 cents_kwh = float(parsed_eia[0]["Avg Price (cents/kWh)"])
                 usd_kwh = f"${cents_kwh / 100:.3f}"
                 period = parsed_eia[0].get("Period", "2024")
-                results.append({
-                    "State": state,
-                    "Industrial Elec (kWh)": usd_kwh,
-                    "Renewable Share (%)": "Moderate (EIA Regional Average)",
-                    "Fiber Optic Density": "Tier 1 (FCC Broadband Map Grounding)",
-                    "Source": f"EIA Unified API Live ({period})"
-                })
+                results.append(
+                    {
+                        "State": state,
+                        "Industrial Elec (kWh)": usd_kwh,
+                        "Renewable Share (%)": "Moderate (EIA Regional Average)",
+                        "Fiber Optic Density": "Tier 1 (FCC Broadband Map Grounding)",
+                        "Source": f"EIA Unified API Live ({period})",
+                    }
+                )
                 continue
         except Exception:
-            pass
-            
+            parsed_eia = None
+
         # Fallback if live EIA fails
-        results.append({
-            "State": state,
-            "Industrial Elec (kWh)": "$0.075",
-            "Renewable Share (%)": "Moderate",
-            "Fiber Optic Density": "Tier 1",
-            "Source": "EIA Industrial Benchmark (Fallback)"
-        })
+        results.append(
+            {
+                "State": state,
+                "Industrial Elec (kWh)": "$0.075",
+                "Renewable Share (%)": "Moderate",
+                "Fiber Optic Density": "Tier 1",
+                "Source": "EIA Industrial Benchmark (Fallback)",
+            }
+        )
 
     return json.dumps(results, indent=2)

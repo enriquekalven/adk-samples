@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: HUD Fair Market Rents (FMR). Talent Relocation & COLA."""
 
 import json
@@ -7,12 +20,17 @@ import os
 
 import requests
 
+from economic_research.shared_libraries.helper import get_session_api_key
+
 # Configure simplified logging to capture API interactions
 logger = logging.getLogger(__name__)
 
+
 # HUD API key (JWT Bearer Token) resolved dynamically
 def get_hud_api_key() -> str:
-    h_raw = os.getenv("HUD_API_KEY", "").strip()
+    h_raw = (
+        get_session_api_key("HUD_API_KEY", os.getenv("HUD_API_KEY")) or ""
+    ).strip()
     return h_raw.replace('"', "").replace("'", "")
 
 
@@ -36,7 +54,7 @@ CITY_TO_COUNTY_FIPS = {
     "miami": "12086",
     "las vegas": "32003",
     "portland": "41051",
-    "detroit": "26163"
+    "detroit": "26163",
 }
 
 
@@ -57,7 +75,7 @@ def get_hud_entity_id(county_fips: str) -> str:
 def fetch_hud_fmr_data(county_fips: str) -> str:
     """
     Fetches HUD FMR with Title Case key matching for FY2026.
-    
+
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
     """
@@ -103,7 +121,8 @@ def fetch_hud_fmr_data(county_fips: str) -> str:
                     },
                     indent=2,
                 )
-        except Exception:
+        except Exception as exc:
+            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
             continue
 
     return json.dumps(
@@ -117,7 +136,7 @@ def fetch_hud_fmr_data(county_fips: str) -> str:
 def fetch_hud_income_limits(county_fips: str) -> str:
     """
     Fetches HUD Income Limits (AMI) with nested JSON schema matching.
-    
+
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
     """
@@ -155,7 +174,8 @@ def fetch_hud_income_limits(county_fips: str) -> str:
                         },
                         indent=2,
                     )
-        except Exception:
+        except Exception as exc:
+            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
             continue
 
     return json.dumps(
@@ -167,7 +187,7 @@ def fetch_hud_income_limits(county_fips: str) -> str:
 def analyze_housing_affordability(county_fips: str) -> str:
     """
     Consolidated site-selection affordability report.
-    
+
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
     """
@@ -216,15 +236,17 @@ def analyze_housing_affordability(county_fips: str) -> str:
 def fetch_hud_usps_crosswalk(zip_code: str) -> str:
     """
     Queries HUD USPS crosswalk API to map ZIP code to County FIPS code (type=2).
-    
+
     Args:
         zip_code: A 5-digit numeric ZIP code string (e.g. "78702").
     """
     zip_code = zip_code.strip()
     if not zip_code.isdigit() or len(zip_code) != 5:
         return json.dumps(
-            {"ERROR": f"Invalid 5-digit numeric ZIP code: {zip_code}. City names are not supported by this tool."},
-            indent=2
+            {
+                "ERROR": f"Invalid 5-digit numeric ZIP code: {zip_code}. City names are not supported by this tool."
+            },
+            indent=2,
         )
 
     api_key = get_hud_api_key()
@@ -269,7 +291,7 @@ def fetch_hud_usps_crosswalk(zip_code: str) -> str:
 def fetch_hud_chas_data(county_fips: str) -> str:
     """
     Queries HUD CHAS API for housing problem and cost burden statistics.
-    
+
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
     """
@@ -282,7 +304,8 @@ def fetch_hud_chas_data(county_fips: str) -> str:
     county_fips = resolve_county_fips(county_fips)
     if len(county_fips) != 5:
         return json.dumps(
-            {"ERROR": f"Invalid 5-digit County FIPS code: {county_fips}"}, indent=2
+            {"ERROR": f"Invalid 5-digit County FIPS code: {county_fips}"},
+            indent=2,
         )
 
     state_id = int(county_fips[:2])
@@ -302,7 +325,7 @@ def fetch_hud_chas_data(county_fips: str) -> str:
                 if not results:
                     continue
                 payload = results[0]
-                
+
                 total_households = float(payload.get("A18") or 0)
                 problems_count = float(payload.get("B3") or 0)
                 cost_burden_30_50 = float(payload.get("D6") or 0)
@@ -331,11 +354,10 @@ def fetch_hud_chas_data(county_fips: str) -> str:
                     },
                     indent=2,
                 )
-        except Exception:
+        except Exception as exc:
+            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
             continue
 
     return json.dumps(
         {"ERROR": f"CHAS lookup failed for FIPS {county_fips}."}, indent=2
     )
-
-

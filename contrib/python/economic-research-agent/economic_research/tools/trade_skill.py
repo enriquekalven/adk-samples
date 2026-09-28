@@ -1,11 +1,26 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: USITC Trade Data. Regional Import/Export dependencies."""
 
-import os
 import json
-import requests
+import os
 
+import requests
 from pydantic import BaseModel, Field
+
+from economic_research.shared_libraries.helper import get_session_api_key
 
 
 class TradeRequest(BaseModel):
@@ -29,18 +44,58 @@ HS_CODE_MAP = {
 }
 
 STATE_MAP = {
-    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
-    "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE", "Florida": "FL", "Georgia": "GA",
-    "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
-    "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
-    "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
-    "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV", "New Hampshire": "NH",
-    "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY", "North Carolina": "NC",
-    "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA",
-    "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN",
-    "Texas": "TX", "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
-    "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"
+    "Alabama": "AL",
+    "Alaska": "AK",
+    "Arizona": "AZ",
+    "Arkansas": "AR",
+    "California": "CA",
+    "Colorado": "CO",
+    "Connecticut": "CT",
+    "Delaware": "DE",
+    "Florida": "FL",
+    "Georgia": "GA",
+    "Hawaii": "HI",
+    "Idaho": "ID",
+    "Illinois": "IL",
+    "Indiana": "IN",
+    "Iowa": "IA",
+    "Kansas": "KS",
+    "Kentucky": "KY",
+    "Louisiana": "LA",
+    "Maine": "ME",
+    "Maryland": "MD",
+    "Massachusetts": "MA",
+    "Michigan": "MI",
+    "Minnesota": "MN",
+    "Mississippi": "MS",
+    "Missouri": "MO",
+    "Montana": "MT",
+    "Nebraska": "NE",
+    "Nevada": "NV",
+    "New Hampshire": "NH",
+    "New Jersey": "NJ",
+    "New Mexico": "NM",
+    "New York": "NY",
+    "North Carolina": "NC",
+    "North Dakota": "ND",
+    "Ohio": "OH",
+    "Oklahoma": "OK",
+    "Oregon": "OR",
+    "Pennsylvania": "PA",
+    "Rhode Island": "RI",
+    "South Carolina": "SC",
+    "South Dakota": "SD",
+    "Tennessee": "TN",
+    "Texas": "TX",
+    "Utah": "UT",
+    "Vermont": "VT",
+    "Virginia": "VA",
+    "Washington": "WA",
+    "West Virginia": "WV",
+    "Wisconsin": "WI",
+    "Wyoming": "WY",
 }
+
 
 def fetch_regional_trade_data(
     state_names: list[str], commodity: str = "Electronic Products"
@@ -50,11 +105,13 @@ def fetch_regional_trade_data(
     Essential for analyzing supply-chain resilience and industry clustering.
     """
     results = []
-    census_key = os.getenv("CENSUS_API_KEY", "").strip()
-    
+    census_key = (
+        get_session_api_key("CENSUS_API_KEY", os.getenv("CENSUS_API_KEY")) or ""
+    ).strip()
+
     # Normalize commodity name to handle case variations (e.g. "pharmaceuticals" -> "Pharmaceuticals")
     comm_clean = commodity.strip().title()
-    
+
     # 1. Fallback Offline Data Bank
     trade_bank = {
         "Texas": {
@@ -70,7 +127,7 @@ def fetch_regional_trade_data(
         },
         "Arizona": {
             "Semiconductors": "$12B annual state-origin export",
-            "Electronic Products": "$12B annual state-origin export (Semiconductors)"
+            "Electronic Products": "$12B annual state-origin export (Semiconductors)",
         },
     }
 
@@ -83,49 +140,53 @@ def fetch_regional_trade_data(
                 "get": "STATE,ALL_VAL_YR,E_COMMODITY",
                 "E_COMMODITY": hs_code,
                 "time": "2024",
-                "key": census_key
+                "key": census_key,
             }
             try:
                 r = requests.get(url, params=params, timeout=10)
                 if r.status_code == 200:
                     data = r.json()
                     rows = data[1:]
-                    
+
                     for state in state_names:
                         state_abbr = STATE_MAP.get(state)
                         if not state_abbr:
                             continue
-                            
+
                         matched_row = None
                         for row in rows:
                             if row[0] == state_abbr:
                                 matched_row = row
                                 break
-                                
+
                         if matched_row:
                             value_usd = int(matched_row[1])
                             time_period = matched_row[4]
-                            
+
                             if value_usd >= 1_000_000_000:
                                 val_str = f"${value_usd / 1_000_000_000:.2f}B"
                             else:
                                 val_str = f"${value_usd / 1_000_000:.2f}M"
-                                
-                            results.append({
-                                "State": state,
-                                "Commodity": comm_clean,
-                                "Market Profile": f"YTD Export Value: {val_str} (cumulative through {time_period})",
-                                "Source": "U.S. Census Bureau International Trade API (statehs)"
-                            })
+
+                            results.append(
+                                {
+                                    "State": state,
+                                    "Commodity": comm_clean,
+                                    "Market Profile": f"YTD Export Value: {val_str} (cumulative through {time_period})",
+                                    "Source": "U.S. Census Bureau International Trade API (statehs)",
+                                }
+                            )
                             continue
             except Exception as e:
-                print(f"⚠️ Census trade API call failed: {e}. Falling back to sandbox database.")
+                print(
+                    f"⚠️ Census trade API call failed: {e}. Falling back to sandbox database."
+                )
 
     # 3. Apply offline fallback for any states that failed or weren't resolved live
     for state in state_names:
         if any(res.get("State") == state for res in results):
             continue
-            
+
         data = trade_bank.get(state, {}).get(
             comm_clean,
             "Data unavailable in trade database.",
@@ -140,4 +201,3 @@ def fetch_regional_trade_data(
         )
 
     return json.dumps(results, indent=2)
-

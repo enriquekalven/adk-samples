@@ -11,11 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """ADK Skill: Logistics & Transit Efficiency (DOT/BTS). Supply Chain Grounding."""
 
 import json
 
 from pydantic import BaseModel, Field
+
+from economic_research.tools.dynamic_search_harvester import (
+    harvest_cultural_amenities,
+    harvest_logistics_efficiency,
+    harvest_regional_incentives,
+)
 
 
 class LogisticsRequest(BaseModel):
@@ -34,9 +41,7 @@ def get_logistics_efficiency(city_names: list[str]) -> str:
 
     for city in city_names:
         city_clean = city.split(",")[0].strip()
-
-        from economic_research.tools.dynamic_search_harvester import harvest_logistics_efficiency
-        harvested = harvest_logistics_efficiency(city)
+        harvested = harvest_logistics_efficiency(city_clean)
         results.append(harvested)
 
     return json.dumps(results, indent=2)
@@ -57,9 +62,7 @@ def get_cultural_amenity_score(city_names: list[str]) -> str:
 
     for city in city_names:
         city_clean = city.split(",")[0].strip()
-
-        from economic_research.tools.dynamic_search_harvester import harvest_cultural_amenities
-        harvested = harvest_cultural_amenities(city)
+        harvested = harvest_cultural_amenities(city_clean)
         results.append(harvested)
 
     return json.dumps(results, indent=2)
@@ -80,7 +83,6 @@ def get_regional_tax_incentives(state_names: list[str]) -> str:
     results = []
 
     for state in state_names:
-        from economic_research.tools.dynamic_search_harvester import harvest_regional_incentives
         harvested = harvest_regional_incentives(state)
         results.append(harvested)
 

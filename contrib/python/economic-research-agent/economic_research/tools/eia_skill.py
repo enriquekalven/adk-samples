@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: EIA Energy Data (U.S. Energy Information Administration)."""
 
 import json
@@ -7,8 +20,11 @@ import os
 
 import requests
 
+from economic_research.shared_libraries.helper import get_session_api_key
+
 # Configure basic logging
 logger = logging.getLogger(__name__)
+
 
 def fetch_state_electricity_rates(
     state_codes: list[str], sector: str = "industrial"
@@ -17,7 +33,9 @@ def fetch_state_electricity_rates(
     Fetches real-time average electricity prices per kWh from the EIA Open Data API.
     Crucial for calculating the operational ROI of data centers or manufacturing plants.
     """
-    h_eia_key = os.getenv("EIA_API_KEY", "").strip()
+    h_eia_key = (
+        get_session_api_key("EIA_API_KEY", os.getenv("EIA_API_KEY")) or ""
+    ).strip()
     eia_key = h_eia_key.replace('"', "").replace("'", "")
     if not eia_key:
         return json.dumps(
@@ -34,11 +52,11 @@ def fetch_state_electricity_rates(
     s_id = sector_map.get(sector.lower(), "IND")
 
     for state in state_codes:
-        state = state.upper().strip()
+        state_clean = state.upper().strip()
         url = (
             f"https://api.eia.gov/v2/electricity/retail-sales/data/?api_key={eia_key}"
             f"&frequency=monthly&data[0]=price"
-            f"&facets[stateid][]={state}"
+            f"&facets[stateid][]={state_clean}"
             f"&facets[sectorid][]={s_id}"
             f"&sort[0][column]=period&sort[0][direction]=desc&length=1"
         )
@@ -57,7 +75,7 @@ def fetch_state_electricity_rates(
                     latest = data_list[0]
                     results.append(
                         {
-                            "State": state,
+                            "State": state_clean,
                             "Sector": sector.capitalize(),
                             "Avg Price (cents/kWh)": f"{float(latest.get('price', 0)):.2f}",
                             "Period": latest.get("period", "Unknown"),
@@ -67,19 +85,19 @@ def fetch_state_electricity_rates(
                 else:
                     results.append(
                         {
-                            "State": state,
+                            "State": state_clean,
                             "Status": "No specific sector data found.",
                         }
                     )
             else:
                 results.append(
                     {
-                        "State": state,
+                        "State": state_clean,
                         "Status": f"EIA API failure ({response.status_code})",
                     }
                 )
         except Exception as e:
-            results.append({"State": state, "Status": f"Error: {e!s}"})
+            results.append({"State": state_clean, "Status": f"Error: {e!s}"})
 
     if not results:
         return json.dumps(

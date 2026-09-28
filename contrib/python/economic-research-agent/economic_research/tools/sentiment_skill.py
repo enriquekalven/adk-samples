@@ -1,4 +1,17 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty or representation.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Real-Time Market Sentiment (NewsAPI)."""
 
 import json
@@ -6,6 +19,8 @@ import os
 
 import requests
 from pydantic import BaseModel, Field
+
+from economic_research.shared_libraries.helper import get_session_api_key
 
 
 class SentimentRequest(BaseModel):
@@ -20,9 +35,9 @@ def analyze_market_sentiment(query: str, language: str = "en") -> str:
     """
     Fetches real-time news headlines to perform sentiment analysis on MSAs and industries.
     Use this to catch 'Soft Signals' (strikes, recent large relocations, political decisions)
-    that governemnt data (BLS/Census) might have missed.
+    that government data (BLS/Census) might have missed.
     """
-    api_key = os.getenv("NEWS_API_KEY")
+    api_key = get_session_api_key("NEWS_API_KEY", os.getenv("NEWS_API_KEY"))
     if not api_key:
         return "ERROR: NEWS_API_KEY is not set in environment variables."
 

@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
+from typing import Any
 
 import google.auth
 from fastapi import FastAPI
@@ -23,12 +25,22 @@ from economic_research.app_utils.telemetry import setup_telemetry
 from economic_research.app_utils.typing import Feedback
 
 setup_telemetry()
-_, project_id = google.auth.default()
-logging_client = google_cloud_logging.Client()
-logger = logging_client.logger(__name__)
-allow_origins = (
-    os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
-)
+try:
+    if os.environ.get("INTEGRATION_TEST"):
+        raise google.auth.exceptions.DefaultCredentialsError(
+            "Skipping live GCP auth in INTEGRATION_TEST mode"
+        )
+    _, project_id = google.auth.default()
+    logging_client = google_cloud_logging.Client()
+    logger: Any = logging_client.logger(__name__)
+    otel_to_cloud = True
+except Exception:
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or ""
+    logger = logging.getLogger(__name__)
+    otel_to_cloud = False
+
+raw_allow_origins = os.getenv("ALLOW_ORIGINS")
+allow_origins = raw_allow_origins.split(",") if raw_allow_origins else None
 
 # Artifact bucket for ADK (created by Terraform, passed via env var)
 logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
@@ -45,7 +57,7 @@ app: FastAPI = get_fast_api_app(
     artifact_service_uri=artifact_service_uri,
     allow_origins=allow_origins,
     session_service_uri=session_service_uri,
-    otel_to_cloud=True,
+    otel_to_cloud=otel_to_cloud,
 )
 app.title = "economic-research-agent"
 app.description = "API for interacting with the Agent economic-research-agent"
@@ -61,7 +73,10 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     Returns:
         Success message
     """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
+    if hasattr(logger, "log_struct"):
+        logger.log_struct(feedback.model_dump(), severity="INFO")
+    else:
+        logger.info("Feedback: %s", feedback.model_dump())
     return {"status": "success"}
 
 
@@ -69,4 +84,8 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host=os.environ.get("HOST") or "127.0.0.1",
+        port=int(os.environ.get("PORT") or "8000"),
+    )

@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,8 +28,12 @@ def test_agent_stream() -> None:
 
     session_service = InMemorySessionService()
 
-    session = session_service.create_session_sync(user_id="test_user", app_name="test")
-    runner = Runner(agent=root_agent, session_service=session_service, app_name="test")
+    session = session_service.create_session_sync(
+        user_id="test_user", app_name="test"
+    )
+    runner = Runner(
+        agent=root_agent, session_service=session_service, app_name="test"
+    )
 
     message = types.Content(
         role="user", parts=[types.Part.from_text(text="Why is the sky blue?")]

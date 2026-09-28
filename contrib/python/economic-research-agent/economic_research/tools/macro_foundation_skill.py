@@ -1,12 +1,26 @@
-#  Copyright 2025 Google LLC. This software is provided as-is, without warranty
-#  or representation for any use or purpose. Your use of it is subject to your
-#  agreement with Google.
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ADK Skill: Macro Foundation (BEA & Census). Hardened macro benchmarks."""
 
 import json
 import os
 
 from pydantic import BaseModel, Field
+
+from economic_research.shared_libraries.helper import get_session_api_key
+
 
 class MacroRequest(BaseModel):
     state_names: list[str] = Field(
@@ -20,7 +34,7 @@ def get_state_macro_health(state_names: list[str]) -> str:
     Fetches GDP and Personal Income (BEA) along with Demographic shifts (Census) for states.
     This provides the 'Top-Line' economic context for site selection.
     """
-    bea_key = os.getenv("BEA_API_KEY")
+    bea_key = get_session_api_key("BEA_API_KEY", os.getenv("BEA_API_KEY"))
     if not bea_key:
         return "ERROR: BEA_API_KEY is missing."
 
