@@ -17,14 +17,20 @@
 
 import logging
 import os
+from pathlib import Path
 
 import google.auth
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 # Load variables from .env if present. In production the environment is
 # already populated by the platform (Cloud Run, GKE, etc.), so a missing
 # .env is expected and not an error.
 load_dotenv()
+for _k, _v in dotenv_values(
+    Path(__file__).resolve().parent.parent / ".env.example"
+).items():
+    if _v is not None and not _v.startswith("<TODO:") and _k not in os.environ:
+        os.environ[_k] = _v
 for _k, _v in list(os.environ.items()):
     if _v.startswith("<TODO:"):
         del os.environ[_k]
@@ -32,13 +38,12 @@ for _k, _v in list(os.environ.items()):
 try:
     _, project_id = google.auth.default()
     if project_id:
-        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
+        if "GOOGLE_CLOUD_PROJECT" not in os.environ:
+            os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
 except Exception as exc:
     logging.getLogger(__name__).debug(
         "Default credentials unavailable: %s", exc
     )
 
-os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "us-east1")
-os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")
 
 from .agent import agent  # noqa: E402 -- must come after load_dotenv()

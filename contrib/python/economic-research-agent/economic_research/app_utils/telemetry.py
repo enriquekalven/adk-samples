@@ -22,34 +22,27 @@ def setup_telemetry() -> str | None:
     bucket = os.environ.get("LOGS_BUCKET_NAME")
     capture_content = (
         os.environ.get("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
-        or "false"
+        or ""
     )
-    if bucket and capture_content != "false":
+    if bucket and capture_content not in ("false", ""):
         logging.info(
             "Prompt-response logging enabled - mode: NO_CONTENT (metadata only, no prompts/responses)"
         )
         os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = (
             "NO_CONTENT"
         )
-        os.environ.setdefault(
-            "OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT", "jsonl"
-        )
-        os.environ.setdefault(
-            "OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK", "upload"
-        )
-        os.environ.setdefault(
-            "OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental"
-        )
-        commit_sha = os.environ.get("COMMIT_SHA") or "dev"
-        os.environ.setdefault(
-            "OTEL_RESOURCE_ATTRIBUTES",
-            f"service.namespace=economic-research-agent,service.version={commit_sha}",
-        )
-        path = os.environ.get("GENAI_TELEMETRY_PATH") or "completions"
-        os.environ.setdefault(
-            "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH",
-            f"gs://{bucket}/{path}",
-        )
+        commit_sha = os.environ.get("COMMIT_SHA") or ""
+        path = os.environ.get("GENAI_TELEMETRY_PATH") or ""
+        defaults = {
+            "OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT": "jsonl",
+            "OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK": "upload",
+            "OTEL_SEMCONV_STABILITY_OPT_IN": "gen_ai_latest_experimental",
+            "OTEL_RESOURCE_ATTRIBUTES": f"service.namespace=economic-research-agent,service.version={commit_sha}",
+            "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH": f"gs://{bucket}/{path}",
+        }
+        for key, val in defaults.items():
+            if key not in os.environ:
+                os.environ[key] = val
     else:
         logging.info(
             "Prompt-response logging disabled (set LOGS_BUCKET_NAME=gs://your-bucket and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT to enable)"

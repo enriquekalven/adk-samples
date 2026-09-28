@@ -86,6 +86,6 @@ if __name__ == "__main__":
 
     uvicorn.run(
         app,
-        host=os.environ.get("HOST") or "127.0.0.1",
-        port=int(os.environ.get("PORT") or "8000"),
+        host=os.environ.get("HOST") or "",
+        port=int(_port) if (_port := os.environ.get("PORT")) else 8000,
     )

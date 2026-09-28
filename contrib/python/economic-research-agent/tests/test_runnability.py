@@ -22,7 +22,8 @@ def test_agent_runnability() -> None:
     """Verify agent.py imports and defines the expected globals."""
     # provide a dummy GCP project and patch google.auth.default() so import-time
     # credential lookups don't need ADC — the setup must happen before the import.
-    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "test-project")
+    if "GOOGLE_CLOUD_PROJECT" not in os.environ:
+        os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
 
     with patch(
         "google.auth.default", return_value=(MagicMock(), "test-project")

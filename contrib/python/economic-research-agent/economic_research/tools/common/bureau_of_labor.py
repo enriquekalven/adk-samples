@@ -21,8 +21,8 @@ import pandas as pd
 
 from economic_research.shared_libraries.helper import execute_bq_query_to_df
 
-PROJECT_ID = os.getenv("PROJECT_ID") or "economic-research-agent"
-LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET") or "bls"
+PROJECT_ID = os.getenv("PROJECT_ID") or ""
+LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET") or ""
 
 
 def get_labor_force_stats(city_names: list[str]):

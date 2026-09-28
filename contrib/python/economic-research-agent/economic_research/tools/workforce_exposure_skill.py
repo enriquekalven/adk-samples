@@ -27,7 +27,7 @@ def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
     try:
         # Load GCP project metadata from environment
         project = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
-        location = os.getenv("GCP_LOCATION") or "us-central1"
+        location = os.getenv("GCP_LOCATION") or ""
 
         client = genai.Client(vertexai=True, project=project, location=location)
         prompt = f"""

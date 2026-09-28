@@ -23,4 +23,5 @@ for _key, _val in dotenv_values(
     Path(__file__).resolve().parent.parent / ".env.example"
 ).items():
     if _val is not None and not _val.startswith("<TODO:"):
-        os.environ.setdefault(_key, _val)
+        if _key not in os.environ:
+            os.environ[_key] = _val
