@@ -27,28 +27,29 @@ LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET") or ""
 
 def get_labor_force_stats(city_names: list[str]):
     """Get labor force stats from a city."""
-    labor_force_table = "labor_force"
-
     city_name_lower_case = [city_name.lower() for city_name in city_names]
     city_names_regex = "|".join(city_name_lower_case)
 
-    column_name_to_match = "area_name"
-
-    labor_query = f"""
+    labor_query = """
     SELECT
         area_name,
         labor_force,
         CONCAT(unemployment_rate, '% (', date, ')') AS unemployment_rate,
         source
-    FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{labor_force_table}`
+    FROM labor_force
     WHERE REGEXP_CONTAINS(
-        LOWER({column_name_to_match}),
-        '{city_names_regex}'
+        LOWER(area_name),
+        @city_names_regex
     );
-    """  # noqa: S608
+    """
 
     labor_force_stats = execute_bq_query_to_df(
-        project=PROJECT_ID, query=labor_query
+        project=PROJECT_ID,
+        query=labor_query,
+        params={
+            "dataset": LABOR_STATS_DATASET,
+            "city_names_regex": city_names_regex,
+        },
     )
 
     def find_city(area_name):
@@ -72,23 +73,21 @@ def get_labor_force_stats(city_names: list[str]):
 
 def get_state_tax_rates(metros: list[dict[str, Any]], drop_state: bool = True):
     """Get State Tax Rates"""
-    state_tax_table = "state_tax_rates"
-
     states = [metro.get("state", "") for metro in metros]
 
-    column_name_to_match = "state"
-
-    state_tax_query = f"""
+    state_tax_query = """
     SELECT
         state,
         CONCAT(tax_rate, '% (', year, ')') AS tax_rate,
         source
-    FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{state_tax_table}`
-    WHERE {column_name_to_match} IN UNNEST({states})
-    """  # noqa: S608
+    FROM state_tax_rates
+    WHERE state IN UNNEST(@states)
+    """
 
     state_tax_bq_results = execute_bq_query_to_df(
-        project=PROJECT_ID, query=state_tax_query
+        project=PROJECT_ID,
+        query=state_tax_query,
+        params={"dataset": LABOR_STATS_DATASET, "states": states},
     )
 
     if state_tax_bq_results.empty:
@@ -114,23 +113,21 @@ def get_state_tax_rates(metros: list[dict[str, Any]], drop_state: bool = True):
 
 def get_union_employment(metros: list[dict[str, Any]], drop_state: bool = True):
     """Get Union Employment Percentage"""
-    union_table = "union_employed"
-
     states = [metro.get("state", "") for metro in metros]
 
-    column_name_to_match = "state"
-
-    union_employement_query = f"""
+    union_employement_query = """
     SELECT
         state,
         CONCAT(union_employed, '% (', year, ')') AS union_employed,
         source
-    FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{union_table}`
-    WHERE {column_name_to_match} IN UNNEST({states})
-    """  # noqa: S608
+    FROM union_employed
+    WHERE state IN UNNEST(@states)
+    """
 
     state_union_employement = execute_bq_query_to_df(
-        project=PROJECT_ID, query=union_employement_query
+        project=PROJECT_ID,
+        query=union_employement_query,
+        params={"dataset": LABOR_STATS_DATASET, "states": states},
     )
 
     metro_df = pd.DataFrame(metros)
@@ -152,28 +149,28 @@ def get_union_employment(metros: list[dict[str, Any]], drop_state: bool = True):
 
 def get_median_hourly_wage(city_names: list[str]):
     """Get median hourly wages from a city."""
-    median_hourly_wage_table = "metro_median_hourly_wages"
-
     city_name_lower_case = [city_name.lower() for city_name in city_names]
-
     city_names_regex = "|".join(city_name_lower_case)
 
-    column_name_to_match = "metro"
-
-    median_wage_query = f"""
+    median_wage_query = """
     SELECT
         metro,
         CONCAT('$',median_hourly_wage) AS median_hourly_wage,
         source
-    FROM `{PROJECT_ID}.{LABOR_STATS_DATASET}.{median_hourly_wage_table}`
+    FROM metro_median_hourly_wages
     WHERE REGEXP_CONTAINS(
-        LOWER({column_name_to_match}),
-        '{city_names_regex}'
+        LOWER(metro),
+        @city_names_regex
     );
-    """  # noqa: S608
+    """
 
     median_hourly_wages = execute_bq_query_to_df(
-        project=PROJECT_ID, query=median_wage_query
+        project=PROJECT_ID,
+        query=median_wage_query,
+        params={
+            "dataset": LABOR_STATS_DATASET,
+            "city_names_regex": city_names_regex,
+        },
     )
 
     def find_city(metro):

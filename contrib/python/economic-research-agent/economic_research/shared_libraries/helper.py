@@ -16,12 +16,18 @@
 
 import os
 from contextvars import ContextVar
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
+from dotenv import dotenv_values
 from google.cloud import secretmanager
 
 _SESSION_API_KEYS: ContextVar[dict[str, str] | None] = ContextVar(
     "session_api_keys", default=None
+)
+_ENV_EXAMPLE_PATH = (
+    Path(__file__).resolve().parent.parent.parent / ".env.example"
 )
 
 
@@ -31,11 +37,12 @@ def init_session_api_keys() -> None:
 
 
 def get_default_model(override: str | None = None) -> str:
-    """Resolves the model identifier with a fallback to gemini-3.5-flash."""
+    """Resolves the configured model identifier from the environment."""
     candidate = override or os.getenv("MODEL_NAME")
     if candidate and not candidate.startswith("<TODO:"):
         return candidate
-    return "gemini-3.5-flash"
+    env_defaults = dotenv_values(_ENV_EXAMPLE_PATH)
+    return env_defaults.get("MODEL_NAME") or ""
 
 
 def get_session_api_key(
@@ -97,16 +104,22 @@ def access_secret_version(project_id, secret_id, version_id="latest"):
     return response.payload.data.decode("UTF-8")
 
 
-def execute_bq_query_to_df(project: str, query: str) -> pd.DataFrame:
+def execute_bq_query_to_df(
+    project: str,
+    query: str,
+    params: dict[str, Any] | None = None,
+) -> pd.DataFrame:
     """Mocked execution of BigQuery queries to bypass GCP Dataset NotFound errors.
 
     Args:
         project: The Google Cloud project ID.
         query: The BigQuery query string.
+        params: Optional dictionary of parameterized query bindings.
 
     Returns:
         A mock pandas DataFrame resembling the expected BLS schema.
     """
+    _ = params
 
     # Return mock data for standard BLS queries to keep local pipeline alive
     if "labor_force" in query.lower():

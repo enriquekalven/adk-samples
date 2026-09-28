@@ -27,7 +27,7 @@ def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
     try:
         # Load GCP project metadata from environment
         project = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
-        location = os.getenv("GCP_LOCATION") or ""
+        location = os.getenv("GCP_LOCATION")
 
         client = genai.Client(vertexai=True, project=project, location=location)
         prompt = f"""
@@ -40,7 +40,7 @@ def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
         1. "exposure_level": Rate as High, Medium-High, Medium, Medium-Low, or Low.
         2. "impact_mode": Classify the primary mode, e.g. "Automation (Directive Workflows)", "Augmentation (Task Iteration & Validation)", "Minimal Impact", etc.
         3. "complexity_score": E.g. "High (16+ years education required)", "Medium (12-14 years education required)".
-        4. "key_exposed_tasks": Select the top 3 most exposed/impacted tasks from the list above.
+        4. "key_exposed_tasks": Identify the top 3 most exposed/impacted tasks from the list above.
         5. "recommendation": Provide a strategic consulting recommendation for organizations employing this role.
         
         Format your response as a valid JSON object with the keys:
@@ -51,7 +51,7 @@ def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
         - recommendation (string)
         
         Do not include markdown code block formatting or explanations. Return only the raw JSON.
-        """  # noqa: S608
+        """
 
         response = client.models.generate_content(
             model=os.getenv("MODEL_NAME"),

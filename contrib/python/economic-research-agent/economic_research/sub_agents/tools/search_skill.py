@@ -18,6 +18,8 @@ import requests
 
 from economic_research.shared_libraries.helper import get_session_api_key
 
+SERPER_REQUEST_TIMEOUT_SECONDS = 15
+
 
 def web_search_skill(query: str) -> str:
     """
@@ -35,7 +37,12 @@ def web_search_skill(query: str) -> str:
     headers = {"X-API-KEY": serper_key, "Content-Type": "application/json"}
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=SERPER_REQUEST_TIMEOUT_SECONDS,
+        )
         if response.status_code == 200:
             results = response.json().get("organic", [])
             if not results:

@@ -18,7 +18,9 @@ Evolved autonomously by AlphaEvolve.
 
 from economic_research.orchestrators.universal_whitepaper_orchestrator import (
     classify_topic,
+    solve,
 )
-from economic_research.orchestrators.universal_whitepaper_orchestrator import (
-    solve as generate_whitepaper,
-)
+
+generate_whitepaper = solve
+
+__all__ = ["classify_topic", "generate_whitepaper", "solve"]
