@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 import validate_manifest as vm
 import validate_structure as m
+from ci_message import Diagnostic, Doc
 
 # Shared minimal-valid manifest — mirrors test_validate_manifest.VALID_MANIFEST.
 VALID_MANIFEST = textwrap.dedent(
@@ -32,6 +33,23 @@ def _write(path: Path, content: str = "") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def _blob(diagnostics: list[Diagnostic]) -> str:
+    """Every field of every diagnostic, flattened for substring checks.
+
+    The tests assert on the CONTRACT — the offending name, the rule that
+    fired (provenance), an actionable fix, a doc link — rather than on one
+    exact sentence, so wording can be improved without a test edit.
+    """
+    return "\n".join(
+        f"{d.check}|{d.what}|{d.why}|{d.how}|{d.doc.url}|{d.file}"
+        for d in diagnostics
+    )
+
+
+def _names(entries: list[tuple[str, str]]) -> list[str]:
+    return [name for name, _ in entries]
 
 
 def _make_python_recipe(
@@ -75,7 +93,7 @@ def _base_policy() -> dict:
             "by_root": {
                 "core": ["AGENTS.md"],
                 "contrib": [],
-                "skills": ["SKILL.md", "EVAL.yaml"],
+                "plugins": ["SKILL.md", "EVAL.yaml"],
             },
             "by_language": {
                 "python": ["pyproject.toml", "uv.lock"],
@@ -87,7 +105,7 @@ def _base_policy() -> dict:
             "by_root": {
                 "core": [],
                 "contrib": [],
-                "skills": ["scripts", "assets", "references", "tests/unit"],
+                "plugins": ["scripts", "assets", "references", "tests/unit"],
             },
             "by_language": {"python": [], "java": []},
         },
@@ -96,30 +114,40 @@ def _base_policy() -> dict:
 
 
 def test_required_files_for_core_python():
-    files = m.required_files_for(_base_policy(), "core", "python")
-    assert files == [
-        "README.md",
-        "AGENTS.md",
-        "pyproject.toml",
-        "uv.lock",
+    # Each entry carries the rule that contributed it — that provenance is
+    # the whole answer to "why does MY recipe need this file", and it
+    # cannot be recovered from the name alone once the lists are merged.
+    assert m.required_files_for(_base_policy(), "core", "python") == [
+        ("README.md", "always"),
+        ("AGENTS.md", "by_root.core"),
+        ("pyproject.toml", "by_language.python"),
+        ("uv.lock", "by_language.python"),
     ]
 
 
 def test_required_files_for_contrib_python():
-    files = m.required_files_for(_base_policy(), "contrib", "python")
     # No AGENTS.md — contrib has no by_root files.
-    assert files == ["README.md", "pyproject.toml", "uv.lock"]
+    assert m.required_files_for(_base_policy(), "contrib", "python") == [
+        ("README.md", "always"),
+        ("pyproject.toml", "by_language.python"),
+        ("uv.lock", "by_language.python"),
+    ]
 
 
-def test_required_files_for_skills_no_language():
-    files = m.required_files_for(_base_policy(), "skills", None)
-    assert files == ["README.md", "SKILL.md", "EVAL.yaml"]
+def test_required_files_for_plugins_no_language():
+    assert m.required_files_for(_base_policy(), "plugins", None) == [
+        ("README.md", "always"),
+        ("SKILL.md", "by_root.plugins"),
+        ("EVAL.yaml", "by_root.plugins"),
+    ]
 
 
 def test_required_files_for_unknown_root_and_language():
-    files = m.required_files_for(_base_policy(), "core", "brainfuck")
     # Unknown language falls back to only always + by_root[core].
-    assert files == ["README.md", "AGENTS.md"]
+    assert m.required_files_for(_base_policy(), "core", "brainfuck") == [
+        ("README.md", "always"),
+        ("AGENTS.md", "by_root.core"),
+    ]
 
 
 def test_required_files_for_missing_config():
@@ -130,6 +158,7 @@ def test_required_files_for_missing_config():
 def test_required_files_for_deduplicates():
     # The dedup path is exercised even if the intended policy layout
     # avoids overlaps — someone editing policy.yml could reintroduce one.
+    # The FIRST source wins, so the reported rule stays stable.
     policy = {
         "required_files": {
             "always": ["README.md"],
@@ -137,8 +166,11 @@ def test_required_files_for_deduplicates():
             "by_language": {"python": ["AGENTS.md", "pyproject.toml"]},
         }
     }
-    files = m.required_files_for(policy, "core", "python")
-    assert files == ["README.md", "AGENTS.md", "pyproject.toml"]
+    assert m.required_files_for(policy, "core", "python") == [
+        ("README.md", "always"),
+        ("AGENTS.md", "by_root.core"),
+        ("pyproject.toml", "by_language.python"),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -219,28 +251,32 @@ def test_check_folder_name_rejects_underscore(tmp_path):
     d = tmp_path / "my_recipe"
     d.mkdir()
     errs = m.check_folder_name(d, max_length=30)
-    assert errs and "invalid" in errs[0].lower()
+    assert errs and "invalid" in errs[0].what.lower()
+    # The fix is a runnable rename, not a restatement of the rule.
+    assert "git mv" in errs[0].how and "my-recipe" in errs[0].how
 
 
 def test_check_folder_name_rejects_uppercase(tmp_path):
     d = tmp_path / "MyRecipe"
     d.mkdir()
     errs = m.check_folder_name(d, max_length=30)
-    assert errs and "invalid" in errs[0].lower()
+    assert errs and "invalid" in errs[0].what.lower()
 
 
 def test_check_folder_name_rejects_leading_digit(tmp_path):
     d = tmp_path / "1recipe"
     d.mkdir()
     errs = m.check_folder_name(d, max_length=30)
-    assert errs and "invalid" in errs[0].lower()
+    assert errs and "invalid" in errs[0].what.lower()
 
 
 def test_check_folder_name_too_long(tmp_path):
     d = tmp_path / ("x" * 31)
     d.mkdir()
     errs = m.check_folder_name(d, max_length=30)
-    assert errs and "31 characters" in errs[0]
+    assert errs and "31 characters" in errs[0].what
+    assert "max_folder_name_length" in errs[0].why
+    assert errs[0].doc is Doc.FOLDER_NAME
 
 
 def test_check_folder_name_both_violations_reported(tmp_path):
@@ -257,6 +293,23 @@ def test_check_folder_name_both_violations_reported(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_committed_policy_pairs_every_entry_with_a_rule():
+    """Provenance is only useful if it is always there — an entry with a
+    blank source would report "Required for every recipe" for a rule that
+    is nothing of the kind."""
+    policy = m.load_policy()
+    for root in ("core", "contrib", "plugins"):
+        entries = m.required_files_for(policy, root, "python")
+        entries += m.required_dirs_for(policy, root, "python")
+        for name, source in entries:
+            assert name and source
+            assert source in (
+                "always",
+                f"by_root.{root}",
+                "by_language.python",
+            ), (name, source)
+
+
 def test_check_required_files_all_present(tmp_path):
     recipe = _make_python_recipe(tmp_path, "core/foo", include_agents=True)
     policy = _base_policy()
@@ -267,7 +320,44 @@ def test_check_required_files_missing_agents_in_core(tmp_path):
     recipe = _make_python_recipe(tmp_path, "core/foo", include_agents=False)
     policy = _base_policy()
     errs = m.check_required_files(recipe, "core", "python", policy)
-    assert any("AGENTS.md" in e for e in errs)
+    assert any("AGENTS.md" in e.what for e in errs)
+
+
+def test_missing_file_says_which_rule_required_it(tmp_path):
+    """ "Required file X is missing" without the rule sends the author to
+    policy.yml to work out whether it even applies to their recipe."""
+    recipe = _make_python_recipe(tmp_path, "core/foo", include_agents=False)
+    (recipe / ".env.example").unlink()
+    policy = _full_policy()
+    by_name = {
+        d.what.split("'")[1]: d
+        for d in m.check_required_files(recipe, "core", "python", policy)
+    }
+
+    assert "by_root.core" in by_name["AGENTS.md"].why
+    assert "under core/" in by_name["AGENTS.md"].why
+
+    env = by_name[".env.example"]
+    assert "manifest.language is 'python'" in env.why
+    assert "by_language.python" in env.why
+    # …and a generator, so the fix is a command, not a research project.
+    assert "extract-python-environment-variables" in env.how
+
+
+def test_missing_uv_lock_gives_the_exact_command(isolated_repo):
+    recipe = _make_python_recipe(isolated_repo, "core/foo", include_agents=True)
+    (recipe / "uv.lock").unlink()
+    errs = m.check_required_files(recipe, "core", "python", _full_policy())
+    (lock,) = [d for d in errs if "uv.lock" in d.what]
+    assert lock.how == "cd core/foo && uv lock"
+
+
+def test_a_required_file_with_no_generator_points_at_the_checklist(tmp_path):
+    recipe = _make_python_recipe(tmp_path, "core/foo", include_agents=True)
+    policy = _full_policy()
+    policy["required_files"]["always"] = ["ARCHITECTURE.md"]
+    (diag,) = m.check_required_files(recipe, "core", None, policy)
+    assert "docs/recipe-checklist.md" in diag.how
 
 
 def test_check_required_files_contrib_does_not_require_agents(tmp_path):
@@ -287,7 +377,7 @@ def test_check_required_files_nested_path(tmp_path):
         "tests/test_runnability.py"
     )
     errs = m.check_required_files(recipe, "core", "python", policy)
-    assert any("tests/test_runnability.py" in e for e in errs)
+    assert any("tests/test_runnability.py" in e.what for e in errs)
 
 
 def test_check_required_files_directory_does_not_satisfy(tmp_path):
@@ -299,7 +389,7 @@ def test_check_required_files_directory_does_not_satisfy(tmp_path):
     _write(recipe / "README.md", "# x\n")
     policy = _base_policy()
     errs = m.check_required_files(recipe, "core", None, policy)
-    assert any("AGENTS.md" in e for e in errs)
+    assert any("AGENTS.md" in e.what and "directory" in e.what for e in errs)
 
 
 # ---------------------------------------------------------------------------
@@ -339,9 +429,15 @@ def test_check_size_and_count_exceeds_file_count(tmp_path):
     manifest = recipe / "manifest.yaml"
     # Add enough files to exceed max_files=10 (recipe already has ~6).
     for i in range(20):
-        _write(recipe / f"extra_{i}.py", "# noop\n")
-    errs = m.check_size_and_count(recipe, "core", _size_policy(), manifest)
-    assert any("exceeding the limit" in e for e in errs)
+        _write(recipe / "generated" / f"extra_{i}.py", "# noop\n")
+    (diag,) = m.check_size_and_count(recipe, "core", _size_policy(), manifest)
+    assert "the limit is 10" in diag.what
+    # Which directory is responsible — a total alone leaves the author to
+    # go and find that out with `find | wc -l`.
+    assert "generated" in diag.how
+    assert "20 files" in diag.how
+    assert "core/default tier" in diag.why
+    assert "large: true" in diag.how
 
 
 def test_check_size_and_count_exceeds_size(tmp_path):
@@ -349,8 +445,44 @@ def test_check_size_and_count_exceeds_size(tmp_path):
     manifest = recipe / "manifest.yaml"
     # Write a single 2 MiB blob; limit is 1 MiB.
     _write(recipe / "blob.bin", "x" * (2 * 1024 * 1024))
-    errs = m.check_size_and_count(recipe, "core", _size_policy(), manifest)
-    assert any("exceeds" in e and "MB" in e for e in errs)
+    (diag,) = m.check_size_and_count(recipe, "core", _size_policy(), manifest)
+    assert "2.0 MB" in diag.what and "limit is 1 MB" in diag.what
+    # The walk already knew the offending path and its size.
+    assert "blob.bin" in diag.how
+    assert "recipe_size_limits.core.default.max_size_mb = 1" in diag.why
+    assert "large: true" in diag.how
+    assert diag.doc is Doc.SIZE_LIMIT
+
+
+def test_size_message_names_the_five_largest_and_no_more(tmp_path):
+    recipe = _make_python_recipe(tmp_path, "core/foo", include_agents=True)
+    manifest = recipe / "manifest.yaml"
+    for i in range(8):
+        _write(recipe / f"blob_{i}.bin", "x" * (300 * 1024))
+    (diag,) = m.check_size_and_count(
+        recipe, "core", _size_policy(max_files=100), manifest
+    )
+    listed = [f"blob_{i}.bin" for i in range(8) if f"blob_{i}.bin" in diag.how]
+    assert len(listed) == 5
+
+
+def test_large_tier_message_says_there_is_no_higher_tier(tmp_path):
+    recipe = _make_python_recipe(
+        tmp_path,
+        "core/foo",
+        manifest=VALID_MANIFEST + "large: true\n",
+        include_agents=True,
+    )
+    manifest = recipe / "manifest.yaml"
+    policy = _size_policy()
+    policy["recipe_size_limits"]["core"]["large"] = {
+        "max_files": 1000,
+        "max_size_mb": 1,
+    }
+    _write(recipe / "blob.bin", "x" * (2 * 1024 * 1024))
+    (diag,) = m.check_size_and_count(recipe, "core", policy, manifest)
+    assert "core/large tier" in diag.why
+    assert "no higher one" in diag.how
 
 
 def test_check_size_and_count_excludes_uv_lock(tmp_path):
@@ -393,7 +525,7 @@ def test_check_size_and_count_large_tier_relaxes(tmp_path):
 
 def test_check_size_and_count_root_without_limits_skips(tmp_path):
     # A root with no section in recipe_size_limits → nothing to enforce.
-    # Uses a fictional root because core, contrib and skills all have real
+    # Uses a fictional root because core, contrib and plugins all have real
     # limits in .github/policy.yml now, so none of them demonstrates this.
     recipe = _make_python_recipe(
         tmp_path, "playground/foo", include_agents=False
@@ -422,12 +554,12 @@ def test_check_size_and_count_missing_large_tier_fails(tmp_path):
             "core": {"default": {"max_files": 50, "max_size_mb": 5}}
         }
     }
-    errs = m.check_size_and_count(recipe, "core", policy, manifest)
-    assert errs
-    assert any(
-        "manifest.large=true" in e and "does not define a 'large' tier" in e
-        for e in errs
-    )
+    (diag,) = m.check_size_and_count(recipe, "core", policy, manifest)
+    assert "manifest.large is true" in diag.what
+    assert "no 'large' size tier" in diag.what
+    # Both ways out, named: drop the opt-in, or have policy.yml grow one.
+    assert "Remove `large: true`" in diag.how
+    assert "core.large" in diag.how
 
 
 def test_check_size_and_count_missing_both_tiers_is_a_noop(tmp_path):
@@ -488,13 +620,13 @@ def test_validate_recipe_missing_manifest_reports_and_skips_schema(
     schema = vm.load_schema()
     errs = m.validate_recipe(recipe, _full_policy(), schema)
     # Missing manifest is reported…
-    assert any("manifest" in e and "missing" in e for e in errs)
+    assert any(e.check == "manifest-missing" for e in errs)
     # …and required files that depend on the manifest's language are
     # NOT reported (we don't know the language, so we skip that source).
     # But `always` + `by_root[core]` files still apply.
     # AGENTS.md is present, README is present, so no other errors expected
     # beyond the manifest itself.
-    assert not any(".env.example" in e for e in errs)
+    assert ".env.example" not in _blob(errs)
 
 
 def test_validate_recipe_invalid_manifest_still_runs_other_checks(
@@ -520,8 +652,8 @@ def test_validate_recipe_invalid_manifest_still_runs_other_checks(
     (recipe / ".env.example").unlink()
     schema = vm.load_schema()
     errs = m.validate_recipe(recipe, _full_policy(), schema)
-    assert any("manifest" in e for e in errs)
-    assert any(".env.example" in e for e in errs)
+    assert any(e.check.startswith("manifest") for e in errs)
+    assert ".env.example" in _blob(errs)
 
 
 def test_validate_recipe_bad_folder_name(isolated_repo):
@@ -530,7 +662,7 @@ def test_validate_recipe_bad_folder_name(isolated_repo):
     )
     schema = vm.load_schema()
     errs = m.validate_recipe(recipe, _full_policy(), schema)
-    assert any("folder-name" in e for e in errs)
+    assert any(e.check == "folder-name" for e in errs)
 
 
 def test_validate_recipe_missing_agents_in_core(isolated_repo):
@@ -539,7 +671,7 @@ def test_validate_recipe_missing_agents_in_core(isolated_repo):
     )
     schema = vm.load_schema()
     errs = m.validate_recipe(recipe, _full_policy(), schema)
-    assert any("AGENTS.md" in e for e in errs)
+    assert "AGENTS.md" in _blob(errs)
 
 
 def test_validate_recipe_outside_known_roots(isolated_repo):
@@ -549,7 +681,23 @@ def test_validate_recipe_outside_known_roots(isolated_repo):
     )
     schema = vm.load_schema()
     errs = m.validate_recipe(recipe, _full_policy(), schema)
-    assert errs and "must live under" in errs[0]
+    assert len(errs) == 1
+    assert errs[0].check == "placement"
+    assert "core/" in errs[0].how and "plugins/" in errs[0].how
+
+
+def test_every_diagnostic_carries_a_working_doc_anchor(isolated_repo):
+    """Every path out of validate_recipe must hand back somewhere to go
+    for more than one line of context."""
+    recipe = _make_python_recipe(
+        isolated_repo, "core/Bad_Name", manifest=None, include_agents=False
+    )
+    (recipe / "uv.lock").unlink()
+    errs = m.validate_recipe(recipe, _full_policy(), vm.load_schema())
+    assert errs
+    for diag in errs:
+        assert isinstance(diag.doc, Doc)
+        assert diag.doc.url.startswith("docs/recipe-handbook/")
 
 
 # ---------------------------------------------------------------------------
@@ -582,8 +730,36 @@ def test_main_returns_one_on_failure(fake_repo, capsys):
     _make_python_recipe(fake_repo, "core/broken", include_agents=False)
     assert m.main("core") == 1
     out = capsys.readouterr().out
-    assert "::error file=core/broken::" in out
+    # The annotation points at the missing file itself, not the recipe root.
+    assert "::error file=core/broken/AGENTS.md::" in out
     assert "AGENTS.md" in out
+
+
+def test_main_annotates_every_problem_not_just_the_first(fake_repo, capsys):
+    """The old output collapsed a recipe's problems into one annotation
+    plus "(+N more)", so the Files tab was a teaser for the job log."""
+    recipe = _make_python_recipe(fake_repo, "core/broken", include_agents=False)
+    (recipe / "uv.lock").unlink()
+    (recipe / ".env.example").unlink()
+
+    assert m.main("core") == 1
+
+    out = capsys.readouterr().out
+    assert "(+" not in out
+    for missing in ("AGENTS.md", "uv.lock", ".env.example"):
+        assert f"::error file=core/broken/{missing}::" in out
+
+
+def test_main_footer_leads_with_the_authoring_docs(fake_repo, capsys):
+    """policy.yml and the JSON schema are enforcement artifacts — the
+    wrong audience for someone who just wants to fix their recipe."""
+    _make_python_recipe(fake_repo, "core/broken", include_agents=False)
+    assert m.main("core") == 1
+    out = capsys.readouterr().out
+    handbook = out.index("docs/recipe-handbook/README.md")
+    checklist = out.index("docs/recipe-checklist.md")
+    policy = out.index(".github/policy.yml")
+    assert handbook < policy and checklist < policy
 
 
 def test_main_single_recipe_scope(fake_repo):
@@ -596,9 +772,13 @@ def test_main_single_recipe_scope(fake_repo):
 # ---------------------------------------------------------------------------
 
 
-def test_required_dirs_for_skills():
-    dirs = m.required_dirs_for(_base_policy(), "skills", "python")
-    assert dirs == ["scripts", "assets", "references", "tests/unit"]
+def test_required_dirs_for_plugins():
+    assert m.required_dirs_for(_base_policy(), "plugins", "python") == [
+        ("scripts", "by_root.plugins"),
+        ("assets", "by_root.plugins"),
+        ("references", "by_root.plugins"),
+        ("tests/unit", "by_root.plugins"),
+    ]
 
 
 def test_required_dirs_for_core_is_empty():
@@ -606,74 +786,90 @@ def test_required_dirs_for_core_is_empty():
 
 
 def test_required_dirs_for_missing_section_degrades():
-    assert m.required_dirs_for({}, "skills", "python") == []
+    assert m.required_dirs_for({}, "plugins", "python") == []
 
 
 def test_required_dirs_for_dedupes():
     policy = {
         "required_dirs": {
             "always": ["scripts"],
-            "by_root": {"skills": ["scripts", "assets"]},
+            "by_root": {"plugins": ["scripts", "assets"]},
             "by_language": {"python": ["assets"]},
         }
     }
-    assert m.required_dirs_for(policy, "skills", "python") == [
-        "scripts",
-        "assets",
+    assert m.required_dirs_for(policy, "plugins", "python") == [
+        ("scripts", "always"),
+        ("assets", "by_root.plugins"),
     ]
 
 
 # ---------------------------------------------------------------------------
-# Vertical skills — the full file + directory contract
+# Vertical plugins — the full file + directory contract
 # ---------------------------------------------------------------------------
 
-SKILL_MANIFEST = VALID_MANIFEST
+PLUGIN_MANIFEST = VALID_MANIFEST
 
 
-def _make_skill(root: Path, rel: str = "skills/retail/store-ops") -> Path:
-    """A complete, valid Python vertical skill: every required file and
+def _make_plugin(root: Path, rel: str = "plugins/retail/store-ops") -> Path:
+    """A complete, valid Python vertical plugin: every required file and
     every required directory."""
-    skill = root / rel
-    skill.mkdir(parents=True, exist_ok=True)
-    _write(skill / "manifest.yaml", SKILL_MANIFEST)
-    _write(skill / "README.md", "# skill\n")
-    _write(skill / "SKILL.md", "# installer\n")
-    _write(skill / "EVAL.yaml", "rubrics: []\n")
-    _write(skill / "pyproject.toml", "[project]\nname='x'\n")
-    _write(skill / "uv.lock", "# lockfile\n")
-    _write(skill / ".env.example", "FOO=1\n")
-    _write(skill / "tests" / "test_runnability.py", "def test(): pass\n")
+    plugin = root / rel
+    plugin.mkdir(parents=True, exist_ok=True)
+    _write(plugin / "manifest.yaml", PLUGIN_MANIFEST)
+    _write(plugin / "README.md", "# plugin\n")
+    _write(plugin / "SKILL.md", "# installer\n")
+    _write(plugin / "EVAL.yaml", "rubrics: []\n")
+    _write(plugin / "pyproject.toml", "[project]\nname='x'\n")
+    _write(plugin / "uv.lock", "# lockfile\n")
+    _write(plugin / ".env.example", "FOO=1\n")
+    _write(plugin / "tests" / "test_runnability.py", "def test(): pass\n")
     for d in ("scripts", "assets", "references", "tests/unit"):
-        (skill / d).mkdir(parents=True, exist_ok=True)
-    return skill
+        (plugin / d).mkdir(parents=True, exist_ok=True)
+    return plugin
 
 
-def test_complete_skill_passes(isolated_repo):
-    skill = _make_skill(isolated_repo)
+def test_complete_plugin_passes(isolated_repo):
+    plugin = _make_plugin(isolated_repo)
     schema = vm.load_schema()
-    assert m.validate_recipe(skill, _full_policy(), schema) == []
+    assert m.validate_recipe(plugin, _full_policy(), schema) == []
 
 
-def test_skill_missing_a_required_dir_fails(isolated_repo):
-    skill = _make_skill(isolated_repo)
-    (skill / "assets").rmdir()
-    errors = m.validate_recipe(skill, _full_policy(), vm.load_schema())
-    assert any("[required-dirs]" in e and "assets/" in e for e in errors)
+def test_plugin_missing_a_required_dir_fails(isolated_repo):
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "assets").rmdir()
+    errors = m.validate_recipe(plugin, _full_policy(), vm.load_schema())
+    (diag,) = [d for d in errors if d.check == "required-dirs"]
+    assert "assets/" in diag.what
+    # The overwhelmingly common report is "the folder is right there" —
+    # so the fix has to lead with git's inability to commit an empty one.
+    assert "git cannot commit an empty directory" in diag.how
+    assert (
+        "touch plugins/retail/store-ops/assets/.gitkeep && "
+        "git add plugins/retail/store-ops/assets/.gitkeep" in diag.how
+    )
 
 
-def test_skill_missing_eval_yaml_fails(isolated_repo):
-    skill = _make_skill(isolated_repo)
-    (skill / "EVAL.yaml").unlink()
-    errors = m.validate_recipe(skill, _full_policy(), vm.load_schema())
-    assert any("EVAL.yaml" in e for e in errors)
+def test_missing_dir_says_which_rule_required_it(isolated_repo):
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "scripts").rmdir()
+    (diag,) = m.check_required_dirs(plugin, "plugins", "python", _full_policy())
+    assert "under plugins/" in diag.why
+    assert "policy.required_dirs.by_root.plugins" in diag.why
+
+
+def test_plugin_missing_eval_yaml_fails(isolated_repo):
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "EVAL.yaml").unlink()
+    errors = m.validate_recipe(plugin, _full_policy(), vm.load_schema())
+    assert "EVAL.yaml" in _blob(errors)
 
 
 def test_empty_required_dirs_pass(isolated_repo):
-    """assets/ and references/ are legitimately empty for some skills."""
-    skill = _make_skill(isolated_repo)
-    assert list((skill / "assets").iterdir()) == []
+    """assets/ and references/ are legitimately empty for some plugins."""
+    plugin = _make_plugin(isolated_repo)
+    assert list((plugin / "assets").iterdir()) == []
     assert (
-        m.check_required_dirs(skill, "skills", "python", _full_policy()) == []
+        m.check_required_dirs(plugin, "plugins", "python", _full_policy()) == []
     )
 
 
@@ -682,12 +878,12 @@ def test_required_dir_that_is_actually_a_file_is_reported_precisely(
 ):
     """'missing' would send the author hunting for something that is
     right there under the wrong kind."""
-    skill = _make_skill(isolated_repo)
-    (skill / "scripts").rmdir()
-    _write(skill / "scripts", "oops\n")
-    errors = m.check_required_dirs(skill, "skills", "python", _full_policy())
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "scripts").rmdir()
+    _write(plugin / "scripts", "oops\n")
+    errors = m.check_required_dirs(plugin, "plugins", "python", _full_policy())
     assert len(errors) == 1
-    assert "exists but is a file" in errors[0]
+    assert "exists but is a file" in errors[0].what
 
 
 # ---------------------------------------------------------------------------
@@ -699,19 +895,22 @@ def test_wrong_case_fails_for_a_strict_entry(isolated_repo):
     """pyproject.toml is read by uv, which resolves it by exact name.
     Accepting PyProject.toml would pass here and then break uv. This must
     fail on macOS too, where the filesystem alone would accept it."""
-    skill = _make_skill(isolated_repo)
-    (skill / "pyproject.toml").unlink()
-    _write(skill / "PyProject.toml", "[project]\nname='x'\n")
-    errors = m.check_required_files(skill, "skills", "python", _full_policy())
-    assert any("pyproject.toml" in e and "missing" in e for e in errors)
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "pyproject.toml").unlink()
+    _write(plugin / "PyProject.toml", "[project]\nname='x'\n")
+    errors = m.check_required_files(plugin, "plugins", "python", _full_policy())
+    assert any(
+        "pyproject.toml" in e.what and "missing" in e.what for e in errors
+    )
 
 
 def test_wrong_case_passes_for_eval_yaml_with_a_note(isolated_repo, capsys):
-    skill = _make_skill(isolated_repo)
-    (skill / "EVAL.yaml").unlink()
-    _write(skill / "eval.yaml", "rubrics: []\n")
+    plugin = _make_plugin(isolated_repo)
+    (plugin / "EVAL.yaml").unlink()
+    _write(plugin / "eval.yaml", "rubrics: []\n")
     assert (
-        m.check_required_files(skill, "skills", "python", _full_policy()) == []
+        m.check_required_files(plugin, "plugins", "python", _full_policy())
+        == []
     )
     out = capsys.readouterr().out
     assert "[NOTE]" in out
@@ -720,9 +919,10 @@ def test_wrong_case_passes_for_eval_yaml_with_a_note(isolated_repo, capsys):
 
 
 def test_exact_case_produces_no_note(isolated_repo, capsys):
-    skill = _make_skill(isolated_repo)
+    plugin = _make_plugin(isolated_repo)
     assert (
-        m.check_required_files(skill, "skills", "python", _full_policy()) == []
+        m.check_required_files(plugin, "plugins", "python", _full_policy())
+        == []
     )
     assert "[NOTE]" not in capsys.readouterr().out
 
@@ -761,11 +961,11 @@ def test_case_insensitive_entries_reads_policy():
 # ---------------------------------------------------------------------------
 
 
-def test_committed_policy_declares_the_skill_contract():
+def test_committed_policy_declares_the_plugin_contract():
     """A future edit must not silently drop part of the contract."""
     policy = m.load_policy()
-    files = m.required_files_for(policy, "skills", "python")
-    dirs = m.required_dirs_for(policy, "skills", "python")
+    files = _names(m.required_files_for(policy, "plugins", "python"))
+    dirs = _names(m.required_dirs_for(policy, "plugins", "python"))
     for f in (
         "README.md",
         "SKILL.md",
@@ -775,8 +975,12 @@ def test_committed_policy_declares_the_skill_contract():
         "tests/test_runnability.py",
     ):
         assert f in files, f
-    for d in ("scripts", "assets", "references", "tests/unit"):
-        assert d in dirs, d
+    # scripts/ is the only required DIRECTORY: an empty directory passes,
+    # so a rule satisfied by a .gitkeep enforces nothing. assets/,
+    # references/ and tests/unit/ remain the convention and are still
+    # created by the scaffold — see the comment above required_dirs in
+    # .github/policy.yml.
+    assert dirs == ["scripts"]
 
 
 def test_committed_policy_keeps_tool_read_files_case_strict():

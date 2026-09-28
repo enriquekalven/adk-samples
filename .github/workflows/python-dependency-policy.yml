@@ -13,8 +13,8 @@ on:
       - 'core/**/pyproject.toml'
       - 'contrib/**/uv.lock'
       - 'contrib/**/pyproject.toml'
-      - 'skills/**/uv.lock'
-      - 'skills/**/pyproject.toml'
+      - 'plugins/**/uv.lock'
+      - 'plugins/**/pyproject.toml'
       - '.github/workflows/python-dependency-policy.yml'
       - '.github/scripts/check_lockfile_hashes.py'
   push:
@@ -27,8 +27,8 @@ on:
       - 'core/**/pyproject.toml'
       - 'contrib/**/uv.lock'
       - 'contrib/**/pyproject.toml'
-      - 'skills/**/uv.lock'
-      - 'skills/**/pyproject.toml'
+      - 'plugins/**/uv.lock'
+      - 'plugins/**/pyproject.toml'
       - '.github/workflows/python-dependency-policy.yml'
       - '.github/scripts/check_lockfile_hashes.py'
   workflow_dispatch:
@@ -55,18 +55,19 @@ jobs:
     # list) are derived from this one value.
     #
     # Deriving rather than duplicating is deliberate: this list was
-    # previously hardcoded at six separate sites, and when skills/ was
+    # previously hardcoded at six separate sites, and when plugins/ was
     # added to `on.paths` above, those six were missed. The result was a
-    # workflow that triggered on skills/ lockfiles and then validated
+    # workflow that triggered on plugins/ lockfiles and then validated
     # nothing while still reporting success.
     env:
-      RECIPE_ROOTS: "core contrib skills"
+      RECIPE_ROOTS: "core contrib plugins"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # ratchet:actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install uv
         # SHA-pinned for consistency with actions/checkout above; both actions
@@ -74,7 +75,7 @@ jobs:
         # python-version is set here so that `python3` in the hash-check step
         # (which uses stdlib tomllib, available since 3.11) always resolves to
         # a known-good interpreter.
-        uses: astral-sh/setup-uv@445689ea25e0de0a23313031f5fe577c74ae45a1 # ratchet:astral-sh/setup-uv@v6.3.0
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # ratchet:astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.11"
 
@@ -109,7 +110,7 @@ jobs:
           LOCKFILES_FILE="${RUNNER_TEMP}/lockfiles.txt"
 
           # Derive both matcher forms from the single RECIPE_ROOTS value.
-          ROOTS_RE="${RECIPE_ROOTS// /|}"      # core|contrib|skills
+          ROOTS_RE="${RECIPE_ROOTS// /|}"      # core|contrib|plugins
           read -ra ROOTS <<< "$RECIPE_ROOTS"
 
           # Only hand `find` roots that actually exist. find errors on a
@@ -195,14 +196,49 @@ jobs:
           set -euo pipefail
 
           FAILED=0
-          ALLOW_PATTERN='pypi\.org|files\.pythonhosted\.org'
 
           while IFS= read -r lockfile; do
-            # Two-stage grep: first find all url/registry lines with an HTTPS URL,
-            # then reject lines that match the allowlist.
-            MATCHES=$(grep -En "(url|registry)\s*=" "$lockfile" | \
-              grep -E "https?://" | \
-              grep -Ev "($ALLOW_PATTERN)" || true)
+            # Each URL is extracted and tested SEPARATELY, rather than
+            # accepting or rejecting a whole line.
+            #
+            # Two defects in the previous form, both of which let a
+            # non-public registry through:
+            #
+            #  1. The pattern was the bare alternation `pypi\.org|...`
+            #     matched anywhere on the line, so any URL that merely
+            #     CONTAINED an allowed string passed:
+            #       https://pypi.org.attacker.example/simple   (host prefix)
+            #       https://internal.example/?m=files.pythonhosted.org (query)
+            #     The fix is to anchor at the start of the URL token and
+            #     require a `:` or `/` delimiter (or end) after the host.
+            #
+            #  2. Anchoring alone is still not enough while the decision is
+            #     line-scoped, because `grep -Ev` drops a line as soon as
+            #     ANYTHING on it matches. A line carrying both a disallowed
+            #     and an allowed URL passes, and uv.lock is TOML, which takes
+            #     trailing comments:
+            #       url = "https://evil.example/x"  # https://pypi.org/simple
+            #     A hand-edited lockfile is exactly the threat model here —
+            #     uv would never emit that — so the per-URL loop matters.
+            #
+            # awk rather than a shell loop for speed: a `grep` per URL spawns
+            # hundreds of thousands of processes across the repo's 44
+            # lockfiles and does not finish inside the job timeout. This is
+            # one process per file and completes in about a second for all
+            # of them. \047 is a single quote, which keeps the whole program
+            # quotable in single quotes.
+            MATCHES=$(awk '
+              /(url|registry)[[:space:]]*=/ {
+                rest = $0
+                while (match(rest, /https?:\/\/[^"\047[:space:],]+/)) {
+                  url = substr(rest, RSTART, RLENGTH)
+                  if (url !~ /^https?:\/\/([^\/@]*@)?(pypi\.org|files\.pythonhosted\.org)([:\/]|$)/) {
+                    printf "%d:%s\n", FNR, url
+                  }
+                  rest = substr(rest, RSTART + RLENGTH)
+                }
+              }
+            ' "$lockfile")
             if [ -n "$MATCHES" ]; then
               echo "[FAIL] $lockfile contains non-PyPI registry URLs:"
               echo "$MATCHES" | sed 's/^/  /'
@@ -317,6 +353,7 @@ jobs:
           set -euo pipefail
 
           FAILED=0
+          CI_FAULT=0
 
           while IFS= read -r lockfile; do
             # --no-project: skip project discovery so uv does NOT walk up, find
@@ -325,13 +362,55 @@ jobs:
             # project environment is needed. Using `uv run` (vs bare python3)
             # still gives us uv's managed Python rather than whatever happens to
             # be on the runner's PATH.
-            uv run --no-project python3 .github/scripts/check_lockfile_hashes.py "$lockfile" || FAILED=1
+            #
+            # Exit status carries whose fault it is: 1 = missing hashes the
+            # contributor must regenerate, 2 = the checker itself could not
+            # parse the lockfile. Previously ANY failure printed the
+            # "re-generate with uv lock" advice below, so a crash produced a
+            # confident diagnosis that happened to be wrong.
+            set +e
+            uv run --no-project python3 .github/scripts/check_lockfile_hashes.py "$lockfile"
+            hash_exit=$?
+            set -e
+            case "$hash_exit" in
+              0) ;;
+              1) FAILED=1 ;;
+              2) CI_FAULT=1 ;;
+              *)
+                echo "::error::check_lockfile_hashes.py exited with an undefined status ($hash_exit). This is a CI tooling bug, not a problem with your recipe."
+                CI_FAULT=1
+                ;;
+            esac
           done < "$LOCKFILES_FILE"
+
+          if [ "$CI_FAULT" -eq 1 ]; then
+            echo ""
+            echo "========================================"
+            echo "  CI TOOLING FAILURE — not your changes"
+            echo "========================================"
+            echo ""
+            echo "The hash checker could not read a lockfile, so we do not"
+            echo "know whether the hashes are present. Re-run the job; if it"
+            echo "fails again, open an issue with the detail above."
+            echo ""
+            echo "Docs: docs/recipe-handbook/troubleshooting.md#ci-infrastructure-failure"
+            exit 1
+          fi
 
           if [ "$FAILED" -eq 1 ]; then
             echo ""
-            echo "All distributions must have sha256 hashes for supply chain integrity."
-            echo "Re-generate the lockfile with 'uv lock'."
+            echo "========================================"
+            echo "  ACTION REQUIRED: lockfile missing hashes"
+            echo "========================================"
+            echo ""
+            echo "Every distribution needs a sha256 hash for supply-chain"
+            echo "integrity. uv writes them by default, so an entry without"
+            echo "one usually means the lockfile was hand-edited or produced"
+            echo "by a different tool. Regenerate it:"
+            echo ""
+            echo "  uv lock --project <recipe-dir>"
+            echo ""
+            echo "Docs: docs/recipe-handbook/troubleshooting.md#missing-package-hash-in-uvlock"
             exit 1
           fi
 
@@ -349,6 +428,7 @@ jobs:
           set -euo pipefail
 
           FAILED=0
+          CI_FAULT=0
           FAILED_DIRS=""
 
           while IFS= read -r lockfile; do
@@ -361,13 +441,49 @@ jobs:
             # staleness (transient registry error, malformed pyproject.toml,
             # unresolvable dep) the real error is visible rather than being
             # silently mis-reported as "stale lockfile".
-            if ! uv lock --check --project "$lockdir"; then
-              echo "::error file=$lockfile::$lockfile is out of date — run: uv lock --project $lockdir"
+            #
+            # Visible was not enough on its own, though. The old message
+            # asserted "is out of date — run: uv lock" for ANY non-zero
+            # exit, so a network blip told the contributor to run a command
+            # that could not possibly fix it, against a file that was
+            # already correct. Distinguish the two by inspecting what uv
+            # actually said.
+            set +e
+            lock_output=$(uv lock --check --project "$lockdir" 2>&1)
+            lock_exit=$?
+            set -e
+            printf '%s\n' "$lock_output"
+
+            [ "$lock_exit" -eq 0 ] && continue
+
+            if printf '%s' "$lock_output" | grep -qiE "not up-to-date|out of date|would be (updated|added|removed)|needs to be updated|lockfile is outdated"; then
+              echo "::error file=$lockfile::$lockfile is out of date with $lockdir/pyproject.toml. Fix: run 'uv lock --project $lockdir' and commit the updated lockfile. Docs: docs/recipe-handbook/troubleshooting.md#uvlock-out-of-sync"
               echo "[FAIL] $lockfile is out of date with $lockdir/pyproject.toml"
               FAILED_DIRS="${FAILED_DIRS}  uv lock --project ${lockdir}"$'\n'
               FAILED=1
+            else
+              echo "::error::uv could not check $lockfile (exit $lock_exit) and the cause is NOT a stale lockfile — see the uv output above. This is usually a transient registry or network failure. Re-run the job; if it persists it needs a repo maintainer, not a change to your PR. Docs: docs/recipe-handbook/troubleshooting.md#ci-infrastructure-failure"
+              echo "[CI FAULT] 'uv lock --check' failed on $lockdir for a reason other than staleness (exit $lock_exit)."
+              CI_FAULT=1
             fi
           done < "$LOCKFILES_FILE"
+
+          if [ "$CI_FAULT" -eq 1 ]; then
+            echo ""
+            echo "========================================"
+            echo "  CI TOOLING FAILURE — not your changes"
+            echo "========================================"
+            echo ""
+            echo "uv could not complete a lockfile check for a reason other"
+            echo "than staleness. Do not run 'uv lock' to work around this —"
+            echo "it will produce an unrelated diff."
+            echo ""
+            echo "Re-run the job. If it fails again, open an issue with the"
+            echo "uv output above and a link to this run."
+            echo ""
+            echo "Docs: docs/recipe-handbook/troubleshooting.md#ci-infrastructure-failure"
+            exit 1
+          fi
 
           if [ "$FAILED" -eq 1 ]; then
             echo ""
@@ -380,6 +496,8 @@ jobs:
             echo "$FAILED_DIRS"
             echo "If you recently edited a pyproject.toml, make sure to run 'uv lock' in the"
             echo "same directory before pushing."
+            echo ""
+            echo "Docs: docs/recipe-handbook/troubleshooting.md#uvlock-out-of-sync"
             echo ""
             exit 1
           fi
