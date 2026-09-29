@@ -18,9 +18,11 @@ import json
 import logging
 import os
 
-from fredapi import Fred
 from pydantic import BaseModel, Field
 
+from economic_research.shared_libraries.fred_client import (
+    TimeoutFred as Fred,  # fredapi.Fred plus a request timeout
+)
 from economic_research.shared_libraries.helper import get_session_api_key
 
 
@@ -67,43 +69,55 @@ def fetch_regional_macro_stats(
         "residential_construction": "BP1FH",  # Building Permits 1-Unit
     }
 
+    search_map = {
+        "residential_construction": "building permits",
+        "unemployment": "unemployment rate",
+        "gdp": "real gdp",
+    }
+
+    def _search_series_id(city_name: str) -> str | None:
+        """Top FRED search hit for the city + metric, or None.
+
+        fredapi returns ``None`` (not an empty frame) when nothing matches.
+        """
+        query_topic = search_map.get(series_type, series_type)
+        search_results = fred.search(f"{city_name} {query_topic}")
+        if search_results is None or search_results.empty:
+            return None
+        return str(search_results.iloc[0].name)
+
     results = []
 
     for city in city_names:
         city_clean = city.split(",")[0].strip()  # Handle "Austin, TX"
-        code = msa_codes.get(city_clean)
-
-        if not code:
-            # Plan B: Search for the MSA series
-            search_query = f"{city_clean} unemployment rate"
-            search_results = fred.search(search_query)
-            if not search_results.empty:
-                code = search_results.iloc[0].name  # Use the most relevant ID
-            else:
-                continue
-
-        # Series construction logic
-        suffix = series_suffixes.get(series_type, "UR")
-        series_id = f"{code}{suffix}"
 
         try:
+            code = msa_codes.get(city_clean)
+            if code:
+                # Series construction logic: [MSA CODE] + metric suffix.
+                suffix = series_suffixes.get(series_type, "UR")
+                series_id = f"{code}{suffix}"
+            else:
+                # Plan B: search returns a complete series ID (no suffix).
+                found_id = _search_series_id(city_clean)
+                if not found_id:
+                    continue
+                series_id = found_id
+
             try:
                 data_series = fred.get_series(series_id)
             except Exception:
                 # If hard-coded ID fails, use search as fallback
-                search_map = {
-                    "residential_construction": "building permits",
-                    "unemployment": "unemployment rate",
-                    "gdp": "real gdp",
-                }
-                query_topic = search_map.get(series_type, series_type)
-                search_query = f"{city_clean} {query_topic}"
-                search_results = fred.search(search_query)
-                if not search_results.empty:
-                    series_id = search_results.iloc[0].name
-                    data_series = fred.get_series(series_id)
-                else:
+                fallback_id = _search_series_id(city_clean)
+                if not fallback_id or fallback_id == series_id:
                     continue
+                series_id = fallback_id
+                data_series = fred.get_series(series_id)
+
+            if data_series is None:
+                continue
+            # FRED encodes missing observations as '.', which become NaN.
+            data_series = data_series.dropna()
 
             if not data_series.empty:
                 latest_val = data_series.iloc[-1]

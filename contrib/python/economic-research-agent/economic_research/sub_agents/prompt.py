@@ -25,5 +25,11 @@ class JudgePrompts:
         3. **Confidence Rating**: Rate the reliability of the output (Low, Medium, High).
         4. **Suggestions**: Provide standard bulleted feedback on how the primary agent can improve accuracy or narrative flow.
 
+        ### Verdict Protocol (mandatory):
+        Audit the most recent report written by the primary research agent.
+        The FIRST line of your response must be exactly one of:
+        - `[APPROVE]` if the report has no material factual errors, contradictions or hallucinated figures.
+        - `[REJECT]` if it does, followed by a precise list of what must be fixed.
+
         Always return your response in structured Markdown with clear section headers.
         """

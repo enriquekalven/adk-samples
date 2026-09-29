@@ -86,10 +86,10 @@ def run_benchmarks():
     if not sim_data:
         return
 
-    print("⚖️ Judging Responses with Gemini 2.5 Flash...")
+    print("⚖️ Judging Responses with the Vertex AI evaluation judge...")
     eval_df = pd.DataFrame(sim_data)
     eval_task = EvalTask(dataset=eval_df, metrics=[GROUNDING_METRIC])
-    # The evaluation judge also needs to point to have access to 2.5 in this project.
+    # The evaluation judge model must be available in this project.
     try:
         results = eval_task.evaluate()
         print("\n📈 ERA PERFORMANCE SUMMARY:")

@@ -25,15 +25,11 @@ test: ## Run unit tests with coverage
 
 run: ## Run the agent locally in interactive mode
 	@echo "🧠 Starting Interactive ERA Consultant Session..."
-	uv run python3 -m economic_research.agent
+	uv run python3 -c "from economic_research.agent import main; main()"
 
 mcp: ## Run the agent as an MCP Server
 	@echo "🛰️ Starting ERA MCP Server..."
 	uv run python3 mcp_server.py
-
-streamlit: ## Launch the Economic Research Agent Dashboard (Streamlit)
-	@echo "🖥️ Launching Economic Research Agent Dashboard..."
-	uv run streamlit run streamlit_app.py
 
 # Note: Serve target removed as server.py was deprecated in 2.0 structure.
 

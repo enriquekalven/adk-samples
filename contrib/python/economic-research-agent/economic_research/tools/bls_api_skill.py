@@ -19,7 +19,16 @@ import os
 
 import requests
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    get_session_api_key,
+    redact_secrets,
+    safe_error,
+)
+from economic_research.tools.dynamic_entity_resolver import (
+    STATE_FIPS,
+    STATE_NAMES,
+)
 
 
 def fetch_bls_series_data(
@@ -45,16 +54,20 @@ def fetch_bls_series_data(
 
     try:
         response = requests.post(
-            url, data=json.dumps(payload), headers=headers, timeout=15
+            url,
+            data=json.dumps(payload),
+            headers=headers,
+            timeout=HTTP_TIMEOUT_SECONDS,
         )
         if response.status_code == 200:
             data = response.json()
 
             # BLS returns success even if key is invalid, but status is REQUEST_NOT_PROCESSED
             if data.get("status") == "REQUEST_NOT_PROCESSED":
-                msg = data.get("message", ["Unknown error"])[0]
+                msg = (data.get("message") or ["Unknown error"])[0]
                 return json.dumps(
-                    {"ERROR": f"BLS Request Failed: {msg}"}, indent=2
+                    {"ERROR": f"BLS Request Failed: {redact_secrets(msg)}"},
+                    indent=2,
                 )
 
             results = []
@@ -63,19 +76,32 @@ def fetch_bls_series_data(
                 observations = series.get("data", [])
 
                 latest_value = "N/A"
+                status = "No data"
                 if observations:
                     latest = observations[0]
-                    latest_value = f"{latest.get('value')} ({latest.get('periodName')} {latest.get('year')})"
+                    raw_value = str(latest.get("value", "")).strip()
+                    latest_value = f"{raw_value} ({latest.get('periodName')} {latest.get('year')})"
+                    if _is_number(raw_value):
+                        status = "Success"
+                    else:
+                        # BLS uses '-' or '(n)'-style markers for missing
+                        # observations; do not report them as data.
+                        latest_value = "N/A"
 
                 results.append(
                     {
                         "Series ID": series_id,
                         "Current Value": latest_value,
-                        "Status": "Success",
+                        "Status": status,
                         "Source": "U.S. Bureau of Labor Statistics (Live API)",
                     }
                 )
 
+            if not results:
+                return json.dumps(
+                    {"ERROR": f"BLS returned no series for {series_ids}."},
+                    indent=2,
+                )
             return json.dumps(results, indent=2)
         else:
             return json.dumps(
@@ -84,7 +110,15 @@ def fetch_bls_series_data(
             )
 
     except Exception as e:
-        return json.dumps({"ERROR": str(e)}, indent=2)
+        return json.dumps({"ERROR": safe_error(e)}, indent=2)
+
+
+def _is_number(value: str) -> bool:
+    try:
+        float(value.replace(",", ""))
+    except ValueError:
+        return False
+    return True
 
 
 def analyze_labor_force_quality(
@@ -92,23 +126,45 @@ def analyze_labor_force_quality(
 ) -> str:
     """
     Performs a comparative labor force assessment.
+
+    Returns the latest BLS LAUS unemployment rate for a state (2-letter code
+    or full name) or, when ``county_fips`` is given, for that county.
     """
     if county_fips:
-        # Standard County Unemployment Series: LAUCN + 5-digit FIPS + 03
-        series_id = f"LAUCN{county_fips}0000000003"
+        county = str(county_fips).strip()
+        if not (county.isdigit() and len(county) == 5):
+            return json.dumps(
+                {"ERROR": f"Invalid 5-digit county FIPS: '{county_fips}'."},
+                indent=2,
+            )
+        # Standard County Unemployment Series (20 chars):
+        # LAUCN + 5-digit FIPS + 0000000003
+        series_id = f"LAUCN{county}0000000003"
         return fetch_bls_series_data([series_id])
 
-    # State mapping dictionary (subset for top sites)
-    state_fips_map = {
-        "TX": "48",
-        "NC": "37",
-        "CA": "06",
-        "TN": "47",
-        "OH": "39",
-        "WA": "53",
-        "GA": "13",
-    }
-
-    fips = state_fips_map.get(state_abbr.upper(), "48")
-    series_id = f"LASST{fips}000000000000003"
+    state_key = (state_abbr or "").strip()
+    abbr = state_key.upper()
+    if abbr not in STATE_FIPS:
+        abbr = next(
+            (
+                a
+                for a, n in STATE_NAMES.items()
+                if n.lower() == state_key.lower()
+            ),
+            "",
+        )
+    fips = STATE_FIPS.get(abbr)
+    if not fips:
+        return json.dumps(
+            {
+                "ERROR": (
+                    f"Unknown state '{state_abbr}'. Use a 2-letter USPS "
+                    "code (e.g. 'TX') or a full state name."
+                )
+            },
+            indent=2,
+        )
+    # Statewide unemployment rate (20 chars): LASST + 2-digit FIPS +
+    # 0000000000003, e.g. LASST480000000000003 for Texas.
+    series_id = f"LASST{fips}0000000000003"
     return fetch_bls_series_data([series_id])

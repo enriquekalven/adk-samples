@@ -1,7 +1,7 @@
 # Economic Research Agent (ERA)
 
 [![Framework-ADK](https://img.shields.io/badge/Framework-ADK%202.0-green)](https://github.com/google/adk)
-[![Python-Support](https://img.shields.io/badge/Python-3.10+-blue)](#)
+[![Python-Support](https://img.shields.io/badge/Python-3.11+-blue)](#)
 [![Deployment-Target](https://img.shields.io/badge/Deployment-Agent%20Runtime-orange)](#)
 
 The **Economic Research Agent (ERA)** is an enterprise-grade AI Reasoning Engine built on the Vertex AI Agent Development Kit (ADK). It automates regional economic analysis, labor market data extraction, and commercial real estate cost modeling by orchestrating live APIs (FRED, BLS, CENSUS, HUD, EIA) in tandem with dynamic Serper.dev Internet Extractors.
@@ -10,13 +10,13 @@ The **Economic Research Agent (ERA)** is an enterprise-grade AI Reasoning Engine
 
 ## A. Capabilities & Architecture
 
-The ERA executes multi-source data extraction to underwrite regional economics. It utilizes an Auditor-Critic loop via Google Search to cross-verify quantitative datasets and eliminate reliance on static mock data.
+The ERA executes multi-source data extraction to underwrite regional economics. Every report is fact-checked by an Auditor Judge agent (live web search via Serper.dev). If the judge rejects the draft, the researcher revises it once. Any tool result that is not live data (missing API key, upstream outage, or a static reference table) is labelled `Sandbox (illustrative data, NOT live)` so it is never presented as live data.
 
 ### Technical Details
 
 | Feature | Specification |
 | :--- | :--- |
-| **Architecture** | ReAct Multi-Point Orchestration (Single-Agent Class) |
+| **Architecture** | Multi-agent: ReAct researcher + Auditor Judge (custom ADK `BaseAgent` loop in `economic_research/audit_loop.py`) |
 | **Framework** | Google Vertex AI ADK |
 | **Vertical** | Economic Development / Real Estate Underwriting |
 | **Grounding APIs** | FRED, BLS, Census, HUD, EIA, RentCast, Serper.dev |
@@ -106,7 +106,8 @@ graph TD
     Judge --> Search["Serper.dev Live Search"]
     Search -->|"Context Tracking"| Judge
     
-    Judge --> Narrative["Narrative Synthesis & Scribe"]
+    Judge -->|"[REJECT] (max 1 revision)"| Planner
+    Judge -->|"[APPROVE]"| Narrative["Narrative Synthesis & Scribe"]
     Narrative -->|"[A2UI] Response"| User
     
     style Planner fill:#f9f,stroke:#333,stroke-width:2px
@@ -220,4 +221,6 @@ Use `agents-cli deploy --list` and `agents-cli deploy --status` to monitor deplo
 
 ### Security Configurations
 - **In-Memory Processing**: The agent processes data in-memory without persistent local storage or static cache tables.
-- **Audit Bypass Flag**: Set `ERA_BYPASS_SUPERVISOR=true` in `.env` to bypass Auditor Critic loops for CI/CD pipelines.
+- **Audit Bypass Flag**: The Auditor Judge runs on every request (deployed, playground and `make run`), which adds one judge call and at most one revision per request. Set `ERA_BYPASS_SUPERVISOR=true` to skip the judge and the router (for example in CI/CD pipelines).
+- **API keys**: Keys are read from the environment, then (in `ERAAgent.query()`) from Secret Manager secrets with the same name; Secret Manager results are cached per process for 10 minutes. Users can also paste a key in chat as `KEY_NAME=value`; the agent only stores a key whose value appears in the user's own message, so tool output (web pages, API responses) cannot inject keys. Error messages returned to the model have API keys redacted.
+- **Timeouts and concurrency**: Outbound HTTP calls (including FRED) time out, and blocking tools run in worker threads so a slow upstream API does not stall other sessions.

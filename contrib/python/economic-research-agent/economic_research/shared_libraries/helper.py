@@ -14,7 +14,11 @@
 
 """Utility Functions for Economic Research Agent."""
 
+import functools
 import os
+import re
+import threading
+import time
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -29,6 +33,58 @@ _SESSION_API_KEYS: ContextVar[dict[str, str] | None] = ContextVar(
 _ENV_EXAMPLE_PATH = (
     Path(__file__).resolve().parent.parent.parent / ".env.example"
 )
+# Last-resort default. `.env.example` is not shipped in the Docker image or
+# the Agent Runtime package, so it cannot be the only fallback.
+DEFAULT_MODEL = "gemini-3.5-flash"
+
+
+# Default timeout (seconds) for outbound HTTP calls made by tools.
+HTTP_TIMEOUT_SECONDS = 15
+
+# Label every non-live (hardcoded, illustrative or fallback) result with this
+# so neither the LLM nor the reader mistakes it for live data.
+SANDBOX_SOURCE = "Sandbox (illustrative data, NOT live)"
+
+# API keys that tools read. Users can supply these for a session; they are
+# also scrubbed from any error text returned to the LLM.
+KNOWN_API_KEYS = (
+    "BEA_API_KEY",
+    "FRED_API_KEY",
+    "CENSUS_API_KEY",
+    "EIA_API_KEY",
+    "BLS_API_KEY",
+    "HUD_API_KEY",
+    "FEC_API_KEY",
+    "NEWS_API_KEY",
+    "SERPER_API_KEY",
+    "CDC_APP_TOKEN",
+    "OPENFDA_API_KEY",
+    "RENTCAST_API_KEY",
+    "ONET_API_KEY",
+)
+
+_SECRET_QUERY_PARAM = re.compile(
+    r"(?i)\b(api_key|apikey|key|registrationkey|userid|token|app_token"
+    r"|access_token|x-api-key)=([^&\s'\"]+)"
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Removes API keys from ``text`` (query parameters and known values)."""
+    redacted = _SECRET_QUERY_PARAM.sub(r"\1=REDACTED", text)
+    for key_name in KNOWN_API_KEYS:
+        value = get_session_api_key(key_name)
+        if value and len(value) >= 6:
+            redacted = redacted.replace(value, "REDACTED")
+    return redacted
+
+
+def safe_error(exc: BaseException, max_len: int = 200) -> str:
+    """Formats an exception for the LLM without leaking API keys."""
+    message = redact_secrets(str(exc))
+    if len(message) > max_len:
+        message = message[:max_len] + "…"
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
 
 
 def init_session_api_keys() -> None:
@@ -42,7 +98,7 @@ def get_default_model(override: str | None = None) -> str:
     if candidate and not candidate.startswith("<TODO:"):
         return candidate
     env_defaults = dotenv_values(_ENV_EXAMPLE_PATH)
-    return env_defaults.get("MODEL_NAME") or ""
+    return env_defaults.get("MODEL_NAME") or DEFAULT_MODEL
 
 
 def get_session_api_key(
@@ -70,20 +126,7 @@ def set_session_api_key(key_name: str, key_value: str) -> str:
     Returns:
         A confirmation message.
     """
-    allowed_keys = [
-        "BEA_API_KEY",
-        "FRED_API_KEY",
-        "CENSUS_API_KEY",
-        "EIA_API_KEY",
-        "BLS_API_KEY",
-        "HUD_API_KEY",
-        "FEC_API_KEY",
-        "NEWS_API_KEY",
-        "SERPER_API_KEY",
-        "CDC_APP_TOKEN",
-        "OPENFDA_API_KEY",
-    ]
-    if key_name not in allowed_keys:
+    if key_name not in KNOWN_API_KEYS:
         return f"ERROR: Setting {key_name} is not allowed."
 
     current_keys = _SESSION_API_KEYS.get()
@@ -94,14 +137,78 @@ def set_session_api_key(key_name: str, key_value: str) -> str:
     return f"Successfully set {key_name} for this session. You can now retry the failed operation."
 
 
-def access_secret_version(project_id, secret_id, version_id="latest"):
+SECRET_TIMEOUT_SECONDS = 5
+SECRET_CACHE_TTL_SECONDS = 600
+_SECRET_CACHE: dict[tuple[str, str], tuple[float, str | None]] = {}
+_SECRET_CACHE_LOCK = threading.Lock()
+
+
+@functools.lru_cache(maxsize=1)
+def _secret_manager_client() -> secretmanager.SecretManagerServiceClient:
+    return secretmanager.SecretManagerServiceClient()
+
+
+@functools.lru_cache(maxsize=1)
+def _default_project_id() -> str | None:
+    """Resolves the GCP project once per process (ADC lookups are slow)."""
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project_id:
+        return project_id
+    try:
+        import google.auth
+
+        _, project_id = google.auth.default()
+    except Exception:  # no ADC configured
+        return None
+    return project_id or None
+
+
+def access_secret_version(
+    project_id, secret_id, version_id="latest", timeout=None
+):
     """Access secret from GCP Secret Manager."""
 
-    client = secretmanager.SecretManagerServiceClient()
+    client = _secret_manager_client()
     name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-    response = client.access_secret_version(request={"name": name})
+    response = client.access_secret_version(
+        request={"name": name},
+        timeout=timeout or SECRET_TIMEOUT_SECONDS,
+    )
 
     return response.payload.data.decode("UTF-8")
+
+
+def get_cloud_secret(key_name: str) -> str | None:
+    """Returns an API key from the session/env, else from Secret Manager.
+
+    Secret Manager results (including "not found") are cached for
+    ``SECRET_CACHE_TTL_SECONDS`` so a query doesn't pay one network round trip
+    per key. Secrets are project-wide configuration, not per-user data, so a
+    process-wide cache is safe.
+    """
+    value = get_session_api_key(key_name)
+    if value:
+        return value
+    project_id = _default_project_id()
+    if not project_id:
+        return None
+
+    cache_key = (project_id, key_name)
+    now = time.monotonic()
+    with _SECRET_CACHE_LOCK:
+        cached = _SECRET_CACHE.get(cache_key)
+    if cached and now - cached[0] < SECRET_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        value = access_secret_version(project_id=project_id, secret_id=key_name)
+    except Exception:  # missing secret, no permission, timeout, no network
+        value = None
+    if value is not None and value.startswith("<TODO:"):
+        value = None
+    with _SECRET_CACHE_LOCK:
+        _SECRET_CACHE[cache_key] = (now, value)
+    return value
 
 
 def execute_bq_query_to_df(

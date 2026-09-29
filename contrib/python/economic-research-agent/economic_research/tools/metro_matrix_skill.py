@@ -15,12 +15,17 @@
 """ADK Skill: Metro Matrix (2.2.1.1). Comprehensive MSA-level benchmarking."""
 
 import json
+import logging
+from typing import Any
 
+from economic_research.shared_libraries.helper import safe_error
 from economic_research.tools.fred_skill import fetch_regional_macro_stats
 from economic_research.tools.macro_foundation_skill import (
     get_state_macro_health,
 )
 from economic_research.tools.sentiment_skill import analyze_market_sentiment
+
+logger = logging.getLogger(__name__)
 
 
 def get_state_from_city(city: str) -> str:
@@ -50,7 +55,20 @@ def get_state_from_city(city: str) -> str:
     for k, v in mapping.items():
         if k in lower_city:
             return v
-    return "Texas"  # Default fallback for site selection demo
+    # Unknown: callers report "state unknown" rather than assume a state.
+    return ""
+
+
+def _load_json_list(raw: Any, label: str) -> list[dict]:
+    """Parses a tool's JSON list output; error strings/dicts give []."""
+    if not isinstance(raw, str) or not raw.strip().startswith("["):
+        logger.info("%s unavailable: %s", label, str(raw)[:200])
+        return []
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return []
+    return [d for d in data if isinstance(d, dict)]
 
 
 def generate_metro_matrix_report(city_names: list[str]) -> str:
@@ -59,34 +77,39 @@ def generate_metro_matrix_report(city_names: list[str]) -> str:
     """
     # 1. Gather Macro Health (BEA/Census)
     # Correct state derivation is critical for Live-API grounding accuracy.
-    states = list({get_state_from_city(city) for city in city_names})
-    macro_json = get_state_macro_health(states)
-    macro_data = (
-        json.loads(macro_json) if not macro_json.startswith("ERROR") else []
+    states = sorted(
+        {s for s in (get_state_from_city(c) for c in city_names) if s}
     )
+    macro_data: list[dict] = []
+    if states:
+        try:
+            macro_data = _load_json_list(
+                get_state_macro_health(states), "Macro data"
+            )
+        except Exception as e:
+            logger.warning("Macro health lookup failed: %s", safe_error(e))
 
-    # 2. Gather Labor Stats (Live FRED)
-    labor_json = fetch_regional_macro_stats(
-        city_names, series_type="unemployment"
-    )
-    labor_data = (
-        json.loads(labor_json)
-        if not labor_json.startswith("No FRED data")
-        and not labor_json.startswith("ERROR")
-        else []
-    )
+    # 2. Gather Labor Stats (Live FRED). fetch_regional_macro_stats returns
+    # an error string (not JSON) on missing key / empty search results.
+    labor_data: list[dict] = []
+    try:
+        labor_data = _load_json_list(
+            fetch_regional_macro_stats(city_names, series_type="unemployment"),
+            "FRED labor data",
+        )
+    except Exception as e:
+        logger.warning("FRED labor lookup failed: %s", safe_error(e))
 
     # 3. Gather Business Climate Sentiment (Search/NewsAPI)
     sentiment_data = []
     for city in city_names:
-        sentiment_data.append(
-            {
-                "City": city,
-                "Business Climate News": analyze_market_sentiment(
-                    f"{city} business climate Forbes Forbes 500"
-                ),
-            }
-        )
+        try:
+            news = analyze_market_sentiment(
+                f"{city} business climate Forbes Forbes 500"
+            )
+        except Exception as e:
+            news = json.dumps({"ERROR": safe_error(e)})
+        sentiment_data.append({"City": city, "Business Climate News": news})
 
     # 4. AI Synthesis: Consolidate into Matrix Structure
     matrix = []
@@ -94,21 +117,27 @@ def generate_metro_matrix_report(city_names: list[str]) -> str:
         city_clean = city.split(",")[0].strip()
         state_target = get_state_from_city(city)
 
-        # High-fidelity target matching
-        m_item = next(
-            (
-                m
-                for m in macro_data
-                if m["State"].lower() == state_target.lower()
-            ),
-            macro_data[0] if macro_data else {"Message": "No Macro Data"},
-        )
+        # High-fidelity target matching (never another state's data)
+        if not state_target:
+            m_item = {"Message": f"State unknown for '{city}'; no macro data."}
+        else:
+            m_item = next(
+                (
+                    m
+                    for m in macro_data
+                    if str(m.get("State", "")).lower() == state_target.lower()
+                ),
+                {"Message": "No Macro Data"},
+            )
         l_item = next(
             (
                 labor
                 for labor in labor_data
-                if labor.get("City", "").lower() == city_clean.lower()
-                or labor.get("City", "").lower() in city.lower()
+                if labor.get("City", "")
+                and (
+                    labor.get("City", "").lower() == city_clean.lower()
+                    or labor.get("City", "").lower() in city.lower()
+                )
             ),
             {"City": city_clean, "Message": "No Labor Data"},
         )

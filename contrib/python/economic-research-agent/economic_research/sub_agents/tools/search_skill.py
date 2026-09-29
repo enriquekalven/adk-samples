@@ -16,7 +16,10 @@ import os
 
 import requests
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    get_session_api_key,
+    safe_error,
+)
 
 SERPER_REQUEST_TIMEOUT_SECONDS = 15
 
@@ -56,4 +59,4 @@ def web_search_skill(query: str) -> str:
             )
         return f"[Serper Error] Failed to fetch search results. HTTP Status {response.status_code}."
     except Exception as e:
-        return f"[Serper Request Failed] {e}"
+        return f"[Serper Request Failed] {safe_error(e)}"

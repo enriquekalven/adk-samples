@@ -18,36 +18,23 @@ import glob
 import json
 import os
 import shutil
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from economic_research.audit_loop import DRAFT_KEY, REVISIONS_KEY, VERDICT_KEY
+from economic_research.shared_libraries.helper import KNOWN_API_KEYS
 
 
 @pytest.fixture(autouse=True)
 def mock_keys(monkeypatch):
     """Mock all API keys in environment to prevent get_cloud_secret calling gcloud/metadata credentials."""
-    allowed_keys = [
-        "BEA_API_KEY",
-        "FRED_API_KEY",
-        "CENSUS_API_KEY",
-        "EIA_API_KEY",
-        "BLS_API_KEY",
-        "HUD_API_KEY",
-        "FEC_API_KEY",
-        "NEWS_API_KEY",
-        "SERPER_API_KEY",
-        "CDC_APP_TOKEN",
-        "OPENFDA_API_KEY",
-    ]
-    for key in allowed_keys:
+    for key in KNOWN_API_KEYS:
         monkeypatch.setenv(key, f"mock_{key.lower()}")
 
 
-@patch("google.adk.runners.InMemoryRunner.run_async")
-def test_query_routing_and_primitives_low_complexity(mock_run_async):
+def _clear_observability_dir() -> str:
     import tempfile
-
-    from economic_research.agent import export_agent
 
     env_log_dir = os.getenv("OBSERVABILITY_LOG_DIR")
     log_dir = (
@@ -57,48 +44,69 @@ def test_query_routing_and_primitives_low_complexity(mock_run_async):
     )
     if os.path.exists(log_dir):
         shutil.rmtree(log_dir)
+    return log_dir
 
-    def make_mock_response(text):
-        mock_part = MagicMock()
-        mock_part.text = text
-        mock_res = MagicMock()
-        mock_res.content.parts = [mock_part]
-        return mock_res
 
-    async def async_generator(items):
-        for item in items:
-            yield item
+def _run_query_with_scripted_apps(question, app_results, monkeypatch):
+    """Runs ERAAgent.query() with each ADK app run replaced by a script.
 
-    # Set side_effect of mock_run_async to simulate the sequence of calls:
-    # 1. classifier_runner.run_async: {"complexity": "LOW"}
-    # 2. main_runner.run_async: "This is a simple report on Ohio electricity rates."
-    # 3. judge_runner.run_async: "Audit: No hallucinations found. PASSED."
-    # 4. evaluator_runner.run_async: '{"interaction_type": "directive", "autonomy_level": 2, "human_only_time_minutes": 10, "human_education_years_required": 12, "task_success": true}'
-    mock_run_async.side_effect = [
-        async_generator([make_mock_response('{"complexity": "LOW"}')]),
-        async_generator(
-            [
-                make_mock_response(
-                    "This is a simple report on Ohio electricity rates."
-                )
-            ]
-        ),
-        async_generator(
-            [make_mock_response("Audit: No hallucinations found. PASSED.")]
-        ),
-        async_generator(
-            [
-                make_mock_response(
-                    '{"interaction_type": "directive", "autonomy_level": 2, "human_only_time_minutes": 10, "human_education_years_required": 12, "task_success": true}'
-                )
-            ]
-        ),
-    ]
+    query() makes three app runs, in order: the complexity router, the main
+    (audited) research app and the primitives evaluator. Each item of
+    ``app_results`` is the ``(text, session_state)`` for one run.
 
-    result = export_agent.query("What is the electricity rate in Ohio?")
+    Returns the report and the model names passed to get_app().
+    """
+    from economic_research.agent import ERAAgent, export_agent
 
-    assert "This is a simple report on Ohio electricity rates." in result
-    assert "Auditor Judge Verification" in result
+    monkeypatch.delenv("ERA_BYPASS_SUPERVISOR", raising=False)
+    requested_models = []
+    real_get_app = ERAAgent.get_app
+
+    def spy_get_app(self, model_name=None):
+        requested_models.append(model_name)
+        return real_get_app(self, model_name=model_name)
+
+    with (
+        patch.object(ERAAgent, "get_app", spy_get_app),
+        patch.object(
+            ERAAgent, "_run_app", AsyncMock(side_effect=app_results)
+        ) as run_app,
+    ):
+        report = export_agent.query(question)
+    assert run_app.await_count == len(app_results)
+    return report, requested_models
+
+
+def test_query_routing_and_primitives_low_complexity(monkeypatch):
+    log_dir = _clear_observability_dir()
+    monkeypatch.setenv("MODEL_NAME", "gemini-3.5-flash")
+    monkeypatch.setenv("MODEL_NAME_GENERATED_1", "gemini-3.1-pro")
+
+    draft = "This is a simple report on Ohio electricity rates."
+    result, models = _run_query_with_scripted_apps(
+        "What is the electricity rate in Ohio?",
+        [
+            ('{"complexity": "LOW"}', {}),
+            (
+                draft,
+                {
+                    DRAFT_KEY: draft,
+                    VERDICT_KEY: "[APPROVE] Audit: No hallucinations found. PASSED.",
+                    REVISIONS_KEY: 0,
+                },
+            ),
+            (
+                '{"interaction_type": "directive", "autonomy_level": 2, "human_only_time_minutes": 10, "human_education_years_required": 12, "task_success": true}',
+                {},
+            ),
+        ],
+        monkeypatch,
+    )
+
+    # LOW complexity keeps the default model for the research run.
+    assert models == ["gemini-3.5-flash"]
+    assert draft in result
+    assert "Auditor Judge Verification (Passed v1)" in result
     assert "PASSED" in result
 
     log_files = glob.glob(os.path.join(log_dir, "*.json"))
@@ -114,65 +122,43 @@ def test_query_routing_and_primitives_low_complexity(mock_run_async):
         assert log_data["primitives"]["task_success"] is True
 
 
-@patch("google.adk.runners.InMemoryRunner.run_async")
 def test_query_routing_and_primitives_high_complexity_with_rejection(
-    mock_run_async,
+    monkeypatch,
 ):
-    import tempfile
+    log_dir = _clear_observability_dir()
+    monkeypatch.setenv("MODEL_NAME", "gemini-3.5-flash")
+    monkeypatch.setenv("MODEL_NAME_GENERATED_1", "gemini-3.1-pro")
 
-    from economic_research.agent import export_agent
-
-    env_log_dir = os.getenv("OBSERVABILITY_LOG_DIR")
-    log_dir = (
-        env_log_dir
-        if env_log_dir and not env_log_dir.startswith("<TODO:")
-        else os.path.join(tempfile.gettempdir(), "observability")
-    )
-    if os.path.exists(log_dir):
-        shutil.rmtree(log_dir)
-
-    def make_mock_response(text):
-        mock_part = MagicMock()
-        mock_part.text = text
-        mock_res = MagicMock()
-        mock_res.content.parts = [mock_part]
-        return mock_res
-
-    async def async_generator(items):
-        for item in items:
-            yield item
-
-    # Sequence of calls:
-    # 1. classifier_runner.run_async: {"complexity": "HIGH"}
-    # 2. main_runner.run_async: "Austin is better."
-    # 3. judge_runner.run_async: "[REJECT] Missing Raleigh comparison data."
-    # 4. main_runner.run_async: "Austin vs Raleigh: Austin is better."
-    # 5. evaluator_runner.run_async: '{"interaction_type": "task_iteration", "autonomy_level": 4, "human_only_time_minutes": 120, "human_education_years_required": 16, "task_success": true}'
-    mock_run_async.side_effect = [
-        async_generator([make_mock_response('{"complexity": "HIGH"}')]),
-        async_generator([make_mock_response("Austin is better.")]),
-        async_generator(
-            [make_mock_response("[REJECT] Missing Raleigh comparison data.")]
-        ),
-        async_generator(
-            [make_mock_response("Austin vs Raleigh: Austin is better.")]
-        ),
-        async_generator(
-            [
-                make_mock_response(
-                    '{"interaction_type": "task_iteration", "autonomy_level": 4, "human_only_time_minutes": 120, "human_education_years_required": 16, "task_success": true}'
-                )
-            ]
-        ),
-    ]
-
-    result = export_agent.query(
-        "Compare Austin and Raleigh for a new tech hub."
+    # The audited loop already revised the draft once after a [REJECT];
+    # its session state carries the corrected draft and revision count.
+    corrected = "Austin vs Raleigh: Austin is better."
+    result, models = _run_query_with_scripted_apps(
+        "Compare Austin and Raleigh for a new tech hub.",
+        [
+            ('{"complexity": "HIGH"}', {}),
+            (
+                "Austin is better. [REJECT] Missing Raleigh comparison data. "
+                + corrected,
+                {
+                    DRAFT_KEY: corrected,
+                    VERDICT_KEY: "[APPROVE] Raleigh comparison now included.",
+                    REVISIONS_KEY: 1,
+                },
+            ),
+            (
+                '{"interaction_type": "task_iteration", "autonomy_level": 4, "human_only_time_minutes": 120, "human_education_years_required": 16, "task_success": true}',
+                {},
+            ),
+        ],
+        monkeypatch,
     )
 
-    assert "Austin vs Raleigh" in result
+    # HIGH complexity routes the research run to MODEL_NAME_GENERATED_1.
+    assert models == ["gemini-3.1-pro"]
+    # The final report is the corrected draft, not the raw event stream.
+    assert result.startswith(corrected)
     assert "Self-Corrected v2" in result
-    assert "Missing Raleigh" in result
+    assert "Raleigh comparison now included" in result
 
     log_files = glob.glob(os.path.join(log_dir, "*.json"))
     assert len(log_files) == 1
@@ -184,6 +170,25 @@ def test_query_routing_and_primitives_high_complexity_with_rejection(
         assert log_data["primitives"]["human_only_time_minutes"] == 120
         assert log_data["primitives"]["human_education_years_required"] == 16
         assert log_data["primitives"]["task_success"] is True
+
+
+def test_query_falls_back_to_default_model_on_quota(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "gemini-3.5-flash")
+    monkeypatch.setenv("MODEL_NAME_GENERATED_1", "gemini-3.1-pro")
+
+    result, models = _run_query_with_scripted_apps(
+        "Compare Austin and Raleigh.",
+        [
+            ('{"complexity": "HIGH"}', {}),
+            RuntimeError("429 RESOURCE_EXHAUSTED"),
+            ("Fallback report.", {DRAFT_KEY: "Fallback report."}),
+            ("not json", {}),  # evaluator failure must not break query()
+        ],
+        monkeypatch,
+    )
+
+    assert models == ["gemini-3.1-pro", "gemini-3.5-flash"]
+    assert result == "Fallback report."
 
 
 def test_analyze_workforce_exposure(monkeypatch):

@@ -9,19 +9,30 @@ architecture:
   stateful: false
   datasources:
     - external
+    - hardcoded
 dependencies:
   libraries:
     - google-adk
     - google-genai
     - pydantic
-    - tenacity
-    - httpx
+    - pandas
+    - fredapi
+    - statsmodels
+    - mcp
   services:
     - Vertex AI
+    - Secret Manager
     - FRED API
     - BEA API
+    - BLS API
     - US Census Bureau API
+    - HUD User API
+    - FEC API
+    - EIA API
+    - Federal Register API
     - RentCast API
+    - O*NET Web Services
+    - Serper.dev
 ownership:
   team: Delta AI Activation Team AMER <delta-ai-activation-team-AMER@google.com>
   poc: enriquekalven

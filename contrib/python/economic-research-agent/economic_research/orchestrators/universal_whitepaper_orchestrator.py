@@ -18,12 +18,16 @@ Features an Adaptive LLM Router that classifies the user's research topic into o
 
 import json
 import logging
-import os
 from collections.abc import Mapping
 from typing import Any
 
 from google import genai
 from google.genai import types
+
+from economic_research.shared_libraries.helper import (
+    get_default_model,
+    safe_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +54,7 @@ def classify_topic(topic: str) -> dict:
         Do not include markdown tags.
         """
         response = client.models.generate_content(
-            model=os.getenv("MODEL_NAME"),
+            model=get_default_model(),
             contents=router_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -60,7 +64,8 @@ def classify_topic(topic: str) -> dict:
         return data
     except Exception as e:
         logger.warning(
-            f"Topic classification failed: {e}. Falling back to SITE_SELECTION."
+            f"Topic classification failed: {safe_error(e)}. "
+            "Falling back to SITE_SELECTION."
         )
         return {"pillar": "A", "rationale": "Fallback"}
 
@@ -201,11 +206,11 @@ def solve(eval_inputs: Mapping[str, Any]) -> str:
         harvest_prompt, synth_prompt = get_adaptive_prompts(pillar, topic)
 
         # Step 2: Adaptive Data Harvesting
-        print(f"🚀 [Phase 1] Harvesting Data for Pillar {pillar}...")
+        logger.info("[Phase 1] Harvesting data for pillar %s.", pillar)
         raw_research_data = export_agent.query(harvest_prompt)
 
         # Step 3: Adaptive McKinsey/PE Synthesis
-        print(f"🚀 [Phase 2] Synthesizing Whitepaper for Pillar {pillar}...")
+        logger.info("[Phase 2] Synthesizing whitepaper for pillar %s.", pillar)
         synthesis_input = f"""
         {synth_prompt}
         
@@ -221,4 +226,4 @@ def solve(eval_inputs: Mapping[str, Any]) -> str:
 
         tb_str = traceback.format_exc()
         logger.error(f"Failed Universal Whitepaper Orchestration: {tb_str}")
-        return f"Error executing universal whitepaper pipeline: {e}"
+        return f"Error executing universal whitepaper pipeline: {safe_error(e)}"

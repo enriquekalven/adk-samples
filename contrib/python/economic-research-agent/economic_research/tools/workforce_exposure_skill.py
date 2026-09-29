@@ -15,15 +15,44 @@
 """Workforce & AI Task Exposure Analysis Skill."""
 
 import json
+import logging
 import os
+import re
+from typing import Any
 
 import requests
 from google import genai
 from google.genai import types
 
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    SANDBOX_SOURCE,
+    get_default_model,
+    get_session_api_key,
+    safe_error,
+)
+
+logger = logging.getLogger(__name__)
+
+ONET_SOURCE = "O*NET Web Services (task list)"
+GEMINI_ESTIMATE_SOURCE = (
+    f"{ONET_SOURCE} + Gemini exposure classification (model estimate)"
+)
+CLASSIFICATION_FAILED_SOURCE = (
+    f"{ONET_SOURCE}; exposure classification unavailable (no estimate)"
+)
+CURATED_ESTIMATE_SOURCE = (
+    f"{SANDBOX_SOURCE}: curated estimate based on O*NET task classifications "
+    "and AI labor exposure studies"
+)
+
 
 def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
-    """Classifies O*NET occupational tasks using Vertex AI / Gemini."""
+    """Classifies O*NET occupational tasks using Vertex AI / Gemini.
+
+    On failure the returned dict has ``classification_failed=True`` and
+    "Unknown" exposure fields; it never invents an exposure rating.
+    """
     try:
         # Load GCP project metadata from environment
         project = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -54,22 +83,47 @@ def classify_onet_tasks_with_gemini(title: str, tasks: list[str]) -> dict:
         """
 
         response = client.models.generate_content(
-            model=os.getenv("MODEL_NAME"),
+            model=get_default_model(),
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
             ),
         )
-        return json.loads(response.text)
+        parsed = json.loads(response.text)
+        if not isinstance(parsed, dict):
+            raise ValueError("Gemini returned a non-object JSON payload.")
+        return parsed
     except Exception as e:
-        print(f"⚠️ Gemini task analysis failed: {e}")
+        logger.warning("Gemini task analysis failed: %s", safe_error(e))
         return {
-            "exposure_level": "High",
-            "impact_mode": "Augmentation",
+            "exposure_level": "Unknown (classification unavailable)",
+            "impact_mode": "Unknown",
             "complexity_score": "Requires manual review",
             "key_exposed_tasks": tasks[:3] if tasks else ["N/A"],
-            "recommendation": f"Default fallback. Error during dynamic classification: {e}",
+            "recommendation": (
+                "Automated classification failed "
+                f"({safe_error(e)}); review the O*NET task list manually."
+            ),
+            "classification_failed": True,
         }
+
+
+def _match_exposure_db(occ_lower: str, exposure_db: dict) -> dict | None:
+    """Exact match first, then whole-word phrase match in either direction.
+
+    Plain substring matching is avoided: an empty string (or a stray letter)
+    is a substring of every key and would silently return the first entry.
+    """
+    if not occ_lower:
+        return None
+    if occ_lower in exposure_db:
+        return exposure_db[occ_lower]
+    for key, val in exposure_db.items():
+        if re.search(rf"\b{re.escape(key)}\b", occ_lower) or re.search(
+            rf"\b{re.escape(occ_lower)}\b", key
+        ):
+            return val
+    return None
 
 
 def analyze_workforce_exposure(occupations: list[str]) -> str:
@@ -184,92 +238,50 @@ def analyze_workforce_exposure(occupations: list[str]) -> str:
         },
     }
 
-    results = []
-    api_key = (os.getenv("ONET_API_KEY") or "").strip()
-
-    if api_key:
-        headers = {"accept": "application/json", "X-API-Key": api_key}
-
-        for occ in occupations:
-            occ_clean = occ.strip()
-            # Step A: Search for the SOC code
-            search_url = "https://api-v2.onetcenter.org/online/search"
-            try:
-                search_resp = requests.get(
-                    search_url,
-                    params={"keyword": occ_clean, "limit": 1},
-                    headers=headers,
-                    timeout=12,
+    if not isinstance(occupations, list) or not any(
+        isinstance(occ, str) and occ.strip() for occ in occupations
+    ):
+        return json.dumps(
+            {
+                "ERROR": (
+                    "Provide at least one non-empty occupation title "
+                    "(e.g. 'Software Developers')."
                 )
-                if search_resp.status_code == 200:
-                    search_data = search_resp.json()
-                    occupation_list = search_data.get("occupation", [])
-                    if occupation_list:
-                        code = occupation_list[0].get("code")
-                        official_title = occupation_list[0].get("title")
+            },
+            indent=2,
+        )
 
-                        # Step B: Fetch tasks
-                        tasks_url = f"https://api-v2.onetcenter.org/online/occupations/{code}/details/tasks"
-                        tasks_resp = requests.get(
-                            tasks_url, headers=headers, timeout=12
-                        )
-                        if tasks_resp.status_code == 200:
-                            tasks_data = tasks_resp.json()
-                            task_items = tasks_data.get("task", [])
-                            task_titles = [
-                                t.get("title")
-                                for t in task_items
-                                if t.get("title")
-                            ][:10]
+    results: list[dict[str, Any]] = []
+    api_key = (get_session_api_key("ONET_API_KEY") or "").strip()
+    headers = (
+        {"accept": "application/json", "X-API-Key": api_key}
+        if api_key
+        else None
+    )
 
-                            if task_titles:
-                                # Step C: Query Gemini to analyze tasks
-                                analysis = classify_onet_tasks_with_gemini(
-                                    official_title, task_titles
-                                )
-                                results.append(
-                                    {
-                                        "soc": code,
-                                        "exposure_level": analysis.get(
-                                            "exposure_level", "Medium"
-                                        ),
-                                        "impact_mode": analysis.get(
-                                            "impact_mode", "Augmentation"
-                                        ),
-                                        "complexity_score": analysis.get(
-                                            "complexity_score",
-                                            "Requires review",
-                                        ),
-                                        "key_exposed_tasks": analysis.get(
-                                            "key_exposed_tasks", task_titles[:3]
-                                        ),
-                                        "recommendation": analysis.get(
-                                            "recommendation",
-                                            "Shift tasks to high-value areas.",
-                                        ),
-                                        "queried_occupation": occ,
-                                    }
-                                )
-                                continue
-            except Exception as e:
-                print(
-                    f"⚠️ O*NET live fetch/analysis failed for '{occ}': {e}. Falling back to sandbox database."
-                )
-
-    # Fallback/Offline logic
     for occ in occupations:
-        if any(res.get("queried_occupation") == occ for res in results):
+        occ_clean = occ.strip() if isinstance(occ, str) else ""
+        if not occ_clean:
+            results.append(
+                {
+                    "queried_occupation": occ,
+                    "ERROR": "Empty occupation title; nothing to analyze.",
+                }
+            )
             continue
 
-        occ_lower = occ.lower().strip()
-        matched_data = None
-        for key, val in exposure_db.items():
-            if key in occ_lower or occ_lower in key:
-                matched_data = val.copy()
-                matched_data["queried_occupation"] = occ
-                break
+        if headers:
+            live = _fetch_onet_exposure(occ, occ_clean, headers)
+            if live:
+                results.append(live)
+                continue
 
-        if matched_data:
+        # Fallback/Offline logic
+        matched = _match_exposure_db(occ_clean.lower(), exposure_db)
+        if matched:
+            matched_data = matched.copy()
+            matched_data["queried_occupation"] = occ
+            matched_data["source"] = CURATED_ESTIMATE_SOURCE
             results.append(matched_data)
         else:
             results.append(
@@ -281,7 +293,76 @@ def analyze_workforce_exposure(occupations: list[str]) -> str:
                     "complexity_score": "Requires manual review",
                     "key_exposed_tasks": ["N/A"],
                     "recommendation": f"Data not pre-mapped for '{occ}'. Standard exposure for this role requires custom task-level evaluation.",
+                    "source": "None (occupation not pre-mapped; no data)",
                 }
             )
 
     return json.dumps(results, indent=2)
+
+
+def _fetch_onet_exposure(
+    occ: str, occ_clean: str, headers: dict[str, str]
+) -> dict | None:
+    """Fetches O*NET tasks and classifies them; returns None on failure."""
+    # Step A: Search for the SOC code
+    search_url = "https://api-v2.onetcenter.org/online/search"
+    try:
+        search_resp = requests.get(
+            search_url,
+            params={"keyword": occ_clean, "limit": 1},
+            headers=headers,
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        if search_resp.status_code != 200:
+            logger.info(
+                "O*NET search returned HTTP %s; using curated estimates.",
+                search_resp.status_code,
+            )
+            return None
+        occupation_list = search_resp.json().get("occupation", [])
+        if not occupation_list:
+            return None
+        code = occupation_list[0].get("code")
+        official_title = occupation_list[0].get("title")
+
+        # Step B: Fetch tasks
+        tasks_url = f"https://api-v2.onetcenter.org/online/occupations/{code}/details/tasks"
+        tasks_resp = requests.get(
+            tasks_url, headers=headers, timeout=HTTP_TIMEOUT_SECONDS
+        )
+        if tasks_resp.status_code != 200:
+            return None
+        task_items = tasks_resp.json().get("task", [])
+        task_titles = [t.get("title") for t in task_items if t.get("title")][
+            :10
+        ]
+        if not task_titles:
+            return None
+
+        # Step C: Query Gemini to analyze tasks
+        analysis = classify_onet_tasks_with_gemini(official_title, task_titles)
+    except Exception as e:
+        logger.warning(
+            "O*NET live fetch/analysis failed: %s. Falling back to curated "
+            "estimates.",
+            safe_error(e),
+        )
+        return None
+
+    failed = bool(analysis.get("classification_failed"))
+    return {
+        "soc": code,
+        "exposure_level": analysis.get("exposure_level", "Unknown"),
+        "impact_mode": analysis.get("impact_mode", "Unknown"),
+        "complexity_score": analysis.get(
+            "complexity_score", "Requires manual review"
+        ),
+        "key_exposed_tasks": analysis.get("key_exposed_tasks", task_titles[:3]),
+        "recommendation": analysis.get(
+            "recommendation", "Review the O*NET task list manually."
+        ),
+        "queried_occupation": occ,
+        "source": CLASSIFICATION_FAILED_SOURCE
+        if failed
+        else GEMINI_ESTIMATE_SOURCE,
+    }

@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Bureau of Labor statistics functions (Internal Tool Logic)."""
+"""Bureau of Labor statistics functions (Internal Tool Logic).
+
+Every function returns JSON-safe values: a ``(rows, citations)`` tuple where
+``rows`` is a ``list[dict]`` and ``citations`` a sorted ``list[str]``. When
+the backing query returns no data (or lacks the expected columns) both are
+empty lists instead of raising ``KeyError``.
+"""
 
 import os
+import re
 from typing import Any
 
 import pandas as pd
@@ -25,10 +32,33 @@ PROJECT_ID = os.getenv("PROJECT_ID") or ""
 LABOR_STATS_DATASET = os.getenv("LABOR_STATS_DATASET") or ""
 
 
-def get_labor_force_stats(city_names: list[str]):
+def _has_columns(df: pd.DataFrame | None, *columns: str) -> bool:
+    return (
+        df is not None
+        and not df.empty
+        and all(c in df.columns for c in columns)
+    )
+
+
+def _to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Converts a DataFrame to JSON-safe records (NaN -> None)."""
+    return df.astype(object).where(pd.notna(df), None).to_dict("records")
+
+
+def _citations(df: pd.DataFrame) -> list[str]:
+    return sorted(str(s) for s in df["source"].dropna().unique())
+
+
+def _city_regex(city_names_lower: list[str]) -> str:
+    return "|".join(re.escape(city) for city in city_names_lower)
+
+
+def get_labor_force_stats(
+    city_names: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Get labor force stats from a city."""
     city_name_lower_case = [city_name.lower() for city_name in city_names]
-    city_names_regex = "|".join(city_name_lower_case)
+    city_names_regex = _city_regex(city_name_lower_case)
 
     labor_query = """
     SELECT
@@ -51,9 +81,11 @@ def get_labor_force_stats(city_names: list[str]):
             "city_names_regex": city_names_regex,
         },
     )
+    if not _has_columns(labor_force_stats, "area_name", "source"):
+        return [], []
 
     def find_city(area_name):
-        area_name_lower = area_name.lower()
+        area_name_lower = str(area_name).lower()
         for city in city_name_lower_case:
             if city in area_name_lower:
                 return city.capitalize()
@@ -64,14 +96,43 @@ def get_labor_force_stats(city_names: list[str]):
     )
 
     # Citations.
-    citations = set(labor_force_stats["source"].unique())
+    citations = _citations(labor_force_stats)
 
     # Drop citation column.
-    labor_force_stats.drop(["source", "area_name"], inplace=True, axis=1)
-    return labor_force_stats, citations
+    labor_force_stats = labor_force_stats.drop(columns=["source", "area_name"])
+    return _to_records(labor_force_stats), citations
 
 
-def get_state_tax_rates(metros: list[dict[str, Any]], drop_state: bool = True):
+def _merge_state_results(
+    bq_results: pd.DataFrame,
+    metros: list[dict[str, Any]],
+    drop_state: bool,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Joins per-state query results onto metros; empty-safe."""
+    if not _has_columns(bq_results, "state", "source"):
+        return [], []
+
+    metro_df = pd.DataFrame(metros)
+    if "state" in metro_df.columns:
+        merged = pd.merge(
+            left=bq_results, right=metro_df, on="state", how="left"
+        )
+    else:
+        merged = bq_results.copy()
+
+    # Citations.
+    citations = _citations(bq_results)
+
+    labels_to_drop = ["source"]
+    if drop_state:
+        labels_to_drop.extend(["state", "state_abbreviation"])
+    merged = merged.drop(columns=labels_to_drop, errors="ignore")
+    return _to_records(merged), citations
+
+
+def get_state_tax_rates(
+    metros: list[dict[str, Any]], drop_state: bool = True
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Get State Tax Rates"""
     states = [metro.get("state", "") for metro in metros]
 
@@ -90,28 +151,12 @@ def get_state_tax_rates(metros: list[dict[str, Any]], drop_state: bool = True):
         params={"dataset": LABOR_STATS_DATASET, "states": states},
     )
 
-    if state_tax_bq_results.empty:
-        return pd.DataFrame(), []
-
-    metro_df = pd.DataFrame(metros)
-
-    state_tax_df = pd.merge(
-        left=state_tax_bq_results, right=metro_df, on="state", how="left"
-    )
-
-    # Citations.
-    citations = set(state_tax_bq_results["source"].unique())
-
-    labels_to_drop = ["source"]
-    if drop_state:
-        labels_to_drop.extend(["state", "state_abbreviation"])
-
-    state_tax_df.drop(labels=labels_to_drop, axis=1, inplace=True)
-
-    return state_tax_df, citations
+    return _merge_state_results(state_tax_bq_results, metros, drop_state)
 
 
-def get_union_employment(metros: list[dict[str, Any]], drop_state: bool = True):
+def get_union_employment(
+    metros: list[dict[str, Any]], drop_state: bool = True
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Get Union Employment Percentage"""
     states = [metro.get("state", "") for metro in metros]
 
@@ -130,27 +175,15 @@ def get_union_employment(metros: list[dict[str, Any]], drop_state: bool = True):
         params={"dataset": LABOR_STATS_DATASET, "states": states},
     )
 
-    metro_df = pd.DataFrame(metros)
-
-    union_employment_df = pd.merge(
-        left=state_union_employement, right=metro_df, on="state", how="left"
-    )
-
-    # Citations.
-    citations = set(state_union_employement["source"].unique())
-
-    labels_to_drop = ["source"]
-    if drop_state:
-        labels_to_drop.extend(["state", "state_abbreviation"])
-    union_employment_df.drop(labels=labels_to_drop, axis=1, inplace=True)
-
-    return union_employment_df, citations
+    return _merge_state_results(state_union_employement, metros, drop_state)
 
 
-def get_median_hourly_wage(city_names: list[str]):
+def get_median_hourly_wage(
+    city_names: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Get median hourly wages from a city."""
     city_name_lower_case = [city_name.lower() for city_name in city_names]
-    city_names_regex = "|".join(city_name_lower_case)
+    city_names_regex = _city_regex(city_name_lower_case)
 
     median_wage_query = """
     SELECT
@@ -172,9 +205,11 @@ def get_median_hourly_wage(city_names: list[str]):
             "city_names_regex": city_names_regex,
         },
     )
+    if not _has_columns(median_hourly_wages, "metro", "source"):
+        return [], []
 
     def find_city(metro):
-        metro_lower = metro.lower()
+        metro_lower = str(metro).lower()
         for city in city_name_lower_case:
             if city in metro_lower:
                 return city.capitalize()
@@ -185,8 +220,8 @@ def get_median_hourly_wage(city_names: list[str]):
     )
 
     # Citations.
-    citations = set(median_hourly_wages["source"].unique())
+    citations = _citations(median_hourly_wages)
 
     # Drop citation column.
-    median_hourly_wages.drop(["source", "metro"], inplace=True, axis=1)
-    return median_hourly_wages, citations
+    median_hourly_wages = median_hourly_wages.drop(columns=["source", "metro"])
+    return _to_records(median_hourly_wages), citations

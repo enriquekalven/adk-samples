@@ -19,7 +19,10 @@ import os
 
 from pydantic import BaseModel, Field
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    SANDBOX_SOURCE,
+    get_session_api_key,
+)
 
 
 class MacroRequest(BaseModel):
@@ -33,6 +36,10 @@ def get_state_macro_health(state_names: list[str]) -> str:
     """
     Fetches GDP and Personal Income (BEA) along with Demographic shifts (Census) for states.
     This provides the 'Top-Line' economic context for site selection.
+
+    NOTE: currently returns the same illustrative placeholder figures for
+    every state (labelled as sandbox data); it does not call BEA/Census.
+    Use fetch_bea_regional_data for live BEA figures.
     """
     bea_key = get_session_api_key("BEA_API_KEY", os.getenv("BEA_API_KEY"))
     if not bea_key:
@@ -55,7 +62,11 @@ def get_state_macro_health(state_names: list[str]) -> str:
                 "Real GDP Growth (%)": "2.4% (Q3 2023)",
                 "Personal Income (Per Capita)": "$68,540",
                 "Population Shift (1-yr)": "+1.2%",
-                "Source": "BEA/Census Unified API",
+                "Note": (
+                    "Placeholder values, identical for every state; not "
+                    "state-specific BEA/Census data."
+                ),
+                "Source": SANDBOX_SOURCE,
             }
         )
 

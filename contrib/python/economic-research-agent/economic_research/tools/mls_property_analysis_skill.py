@@ -15,15 +15,28 @@
 """MLS Property Analysis and Real Estate Investment Yield Calculator Skill with RentCast API integration."""
 
 import json
-import os
+import logging
 from typing import Any
 
 import requests
 
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    SANDBOX_SOURCE,
+    get_session_api_key,
+    safe_error,
+)
 from economic_research.tools.hud_skill import (
     fetch_hud_fmr_data,
     fetch_hud_usps_crosswalk,
 )
+
+logger = logging.getLogger(__name__)
+
+RENTCAST_SOURCE = "RentCast Listings API (live)"
+# Assumed 2BR monthly rent when HUD FMR cannot be retrieved (labelled in
+# the output as a default, never as HUD data).
+DEFAULT_FMR_2BR = 1500.0
 
 # Grounded city-to-county FIPS mappings for HUD integration (fallback)
 CITY_FIPS_MAP = {
@@ -69,9 +82,10 @@ def fetch_mls_property_listings(
 
     Returns:
         JSON string containing active listings, estimated local rents, annual expenses, and Cap Rates.
+        Each listing carries a "Source" field; sandbox listings are labelled as illustrative, not live.
     """
     city_clean = city_name.lower().strip().split(",")[0]
-    api_key = (os.getenv("RENTCAST_API_KEY") or "").strip()
+    api_key = (get_session_api_key("RENTCAST_API_KEY") or "").strip()
 
     raw_listings: list[dict[str, Any]] = []
 
@@ -102,10 +116,15 @@ def fetch_mls_property_listings(
 
         try:
             headers = {"accept": "application/json", "X-Api-Key": api_key}
-            resp = requests.get(url, params=params, headers=headers, timeout=12)
+            resp = requests.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
             if resp.status_code == 200:
                 data = resp.json()
-                for item in data:
+                for item in data if isinstance(data, list) else []:
                     raw_listings.append(
                         {
                             "address": item.get("formattedAddress"),
@@ -114,15 +133,21 @@ def fetch_mls_property_listings(
                             "baths": item.get("bathrooms", 1.5),
                             "type": property_type.lower(),
                             "zip": item.get("zipCode"),
+                            "source": RENTCAST_SOURCE,
                         }
                     )
             else:
-                print(
-                    f"⚠️ RentCast API returned code {resp.status_code}: {resp.text}. Falling back to sandbox database."
+                # Never log the response body: it can echo request details.
+                logger.warning(
+                    "RentCast API returned HTTP %s; falling back to sandbox "
+                    "listings.",
+                    resp.status_code,
                 )
         except Exception as e:
-            print(
-                f"⚠️ RentCast request failed: {e}. Falling back to sandbox database."
+            logger.warning(
+                "RentCast request failed (%s); falling back to sandbox "
+                "listings.",
+                safe_error(e),
             )
 
     # 2. Fall back to mock active listings if no key was present or no listings were fetched
@@ -238,6 +263,7 @@ def fetch_mls_property_listings(
                     "baths": item["baths"],
                     "type": item["type"],
                     "zip": zip_code,
+                    "source": SANDBOX_SOURCE,
                 }
             )
 
@@ -251,52 +277,48 @@ def fetch_mls_property_listings(
             indent=2,
         )
 
-    # 3. Filter and analyze listings
-    analyzed_listings = []
+    # 3. Filter listings
+    eligible = []
     for prop in raw_listings:
+        # Live RentCast listings can omit fields or report price None/0;
+        # skip them rather than crash on the cap-rate division below.
+        price = prop.get("price")
+        if (
+            not isinstance(price, (int, float))
+            or isinstance(price, bool)
+            or price <= 0
+        ):
+            continue
+        prop_type = str(prop.get("type") or "unknown")
+
         # Filter by price
-        if max_price and prop["price"] > max_price:
+        if max_price and price > max_price:
             continue
 
         # Filter by property type
-        if property_type and prop["type"].lower() != property_type.lower():
+        if property_type and prop_type.lower() != property_type.lower():
             continue
+        eligible.append(prop)
 
-        # Get local HUD FMR data dynamically
-        hud_rent_2br = 1500.0  # Default fallback rent
-        hud_year = "2025"
+    # 4. Get local HUD FMR data once per city (not once per listing): at
+    # most one crosswalk, one resolver and one FMR call per request.
+    hud_rent_2br, hud_label = (
+        _city_hud_rent(city_name, eligible) if eligible else (0.0, "")
+    )
 
-        # Try dynamic lookup first
-        fips = None
-        if prop.get("zip"):
-            try:
-                cross_resp = json.loads(fetch_hud_usps_crosswalk(prop["zip"]))
-                if "County_FIPS" in cross_resp:
-                    fips = cross_resp["County_FIPS"]
-            except Exception:
-                fips = None
-
-        # If dynamic FIPS lookup fails, fall back to our evolved Dynamic Entity Resolver
-        if not fips:
-            from economic_research.tools.dynamic_entity_resolver import (
-                resolve_fips,
-            )
-
-            fips = resolve_fips(city_clean)
-
-        if fips:
-            try:
-                hud_resp = json.loads(fetch_hud_fmr_data(fips))
-                if "Rent_2BR" in hud_resp:
-                    hud_rent_2br = float(
-                        hud_resp["Rent_2BR"].replace("$", "").replace(",", "")
-                    )
-                    hud_year = hud_resp.get("Year", "2025")
-            except Exception:
-                hud_rent_2br = 1500.0  # Use default fallback rent
+    # 5. Analyze listings
+    analyzed_listings = []
+    for prop in eligible:
+        price = prop["price"]
+        prop_type = str(prop.get("type") or "unknown")
 
         # Adjust estimated monthly rent based on bed count (vs 2BR HUD base)
-        beds = prop.get("beds") or 2
+        beds_raw = prop.get("beds")
+        beds = (
+            beds_raw
+            if isinstance(beds_raw, (int, float)) and beds_raw > 0
+            else 2
+        )
         bed_multiplier = 1.0
         if beds == 1:
             bed_multiplier = 0.8
@@ -313,24 +335,66 @@ def fetch_mls_property_listings(
         net_operating_income = est_annual_rent - est_annual_expenses
 
         # Calculate Cap Rate (%)
-        cap_rate = (net_operating_income / prop["price"]) * 100
+        cap_rate = (net_operating_income / price) * 100
 
         # Price-to-Rent Ratio
-        price_to_rent = prop["price"] / est_annual_rent
+        price_to_rent = price / est_annual_rent if est_annual_rent else 0.0
 
         analyzed_listings.append(
             {
-                "Address": prop["address"],
-                "Price": f"${prop['price']:,}",
-                "Property Type": prop["type"].capitalize(),
-                "Beds/Baths": f"{beds}B/{prop['baths']}Ba",
-                "HUD FMR (2BR)": f"${hud_rent_2br:,.0f} ({hud_year})",
+                "Address": prop.get("address", "N/A"),
+                "Price": f"${price:,}",
+                "Property Type": prop_type.capitalize(),
+                "Beds/Baths": f"{beds}B/{prop.get('baths', 'N/A')}Ba",
+                "HUD FMR (2BR)": f"${hud_rent_2br:,.0f} ({hud_label})",
                 "Est. Monthly Rent": f"${est_monthly_rent:,.2f}",
                 "Est. Annual Expenses": f"${est_annual_expenses:,.2f}",
                 "Net Operating Income": f"${net_operating_income:,.2f}",
                 "Price-to-Rent Ratio": f"{price_to_rent:.1f}x",
                 "Estimated Cap Rate": f"{cap_rate:.2f}%",
+                "Source": prop.get("source", SANDBOX_SOURCE),
             }
         )
 
     return json.dumps(analyzed_listings, indent=2)
+
+
+def _city_hud_rent(
+    city_name: str, listings: list[dict[str, Any]]
+) -> tuple[float, str]:
+    """HUD 2BR Fair Market Rent for the city and a label for its basis.
+
+    Resolves the county FIPS once: HUD USPS crosswalk on the first listing
+    ZIP, else the Dynamic Entity Resolver (which is given the state, when
+    present, so it cannot map to a same-named county in another state).
+    """
+    fips = None
+    zip_code = next((p["zip"] for p in listings if p.get("zip")), None)
+    if zip_code:
+        try:
+            cross_resp = json.loads(fetch_hud_usps_crosswalk(zip_code))
+            if isinstance(cross_resp, dict) and "County_FIPS" in cross_resp:
+                fips = cross_resp["County_FIPS"]
+        except Exception as exc:
+            logger.debug("HUD crosswalk failed: %s", safe_error(exc))
+
+    # If dynamic FIPS lookup fails, fall back to our evolved Dynamic Entity Resolver
+    if not fips:
+        from economic_research.tools.dynamic_entity_resolver import (
+            resolve_fips,
+        )
+
+        fips = resolve_fips(city_name)  # '' when unresolved
+
+    if fips:
+        try:
+            hud_resp = json.loads(fetch_hud_fmr_data(fips))
+            if isinstance(hud_resp, dict) and "Rent_2BR" in hud_resp:
+                rent = float(
+                    hud_resp["Rent_2BR"].replace("$", "").replace(",", "")
+                )
+                return rent, str(hud_resp.get("Year", "HUD FMR"))
+        except Exception as exc:
+            logger.debug("HUD FMR lookup failed: %s", safe_error(exc))
+
+    return DEFAULT_FMR_2BR, "default assumption; HUD FMR unavailable"

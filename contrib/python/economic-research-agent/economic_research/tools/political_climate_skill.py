@@ -18,6 +18,8 @@ import json
 
 from pydantic import BaseModel, Field
 
+from economic_research.shared_libraries.helper import safe_error
+
 
 class PoliticalRequest(BaseModel):
     industry: str = Field(
@@ -55,4 +57,4 @@ def search_lobbying_influence(industry: str, state: str) -> str:
         return json.dumps(results, indent=2)
 
     except Exception as e:
-        return json.dumps({"ERROR": str(e)}, indent=2)
+        return json.dumps({"ERROR": safe_error(e)}, indent=2)

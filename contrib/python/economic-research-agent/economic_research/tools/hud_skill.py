@@ -20,7 +20,10 @@ import os
 
 import requests
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    get_session_api_key,
+    safe_error,
+)
 
 # Configure simplified logging to capture API interactions
 logger = logging.getLogger(__name__)
@@ -58,11 +61,71 @@ CITY_TO_COUNTY_FIPS = {
 }
 
 
+# (postal abbreviation, state FIPS, lower-case name) for 50 states + DC.
+_STATES = (
+    ("AL", "01", "alabama"), ("AK", "02", "alaska"),
+    ("AZ", "04", "arizona"), ("AR", "05", "arkansas"),
+    ("CA", "06", "california"), ("CO", "08", "colorado"),
+    ("CT", "09", "connecticut"), ("DE", "10", "delaware"),
+    ("DC", "11", "district of columbia"), ("FL", "12", "florida"),
+    ("GA", "13", "georgia"), ("HI", "15", "hawaii"),
+    ("ID", "16", "idaho"), ("IL", "17", "illinois"),
+    ("IN", "18", "indiana"), ("IA", "19", "iowa"),
+    ("KS", "20", "kansas"), ("KY", "21", "kentucky"),
+    ("LA", "22", "louisiana"), ("ME", "23", "maine"),
+    ("MD", "24", "maryland"), ("MA", "25", "massachusetts"),
+    ("MI", "26", "michigan"), ("MN", "27", "minnesota"),
+    ("MS", "28", "mississippi"), ("MO", "29", "missouri"),
+    ("MT", "30", "montana"), ("NE", "31", "nebraska"),
+    ("NV", "32", "nevada"), ("NH", "33", "new hampshire"),
+    ("NJ", "34", "new jersey"), ("NM", "35", "new mexico"),
+    ("NY", "36", "new york"), ("NC", "37", "north carolina"),
+    ("ND", "38", "north dakota"), ("OH", "39", "ohio"),
+    ("OK", "40", "oklahoma"), ("OR", "41", "oregon"),
+    ("PA", "42", "pennsylvania"), ("RI", "44", "rhode island"),
+    ("SC", "45", "south carolina"), ("SD", "46", "south dakota"),
+    ("TN", "47", "tennessee"), ("TX", "48", "texas"),
+    ("UT", "49", "utah"), ("VT", "50", "vermont"),
+    ("VA", "51", "virginia"), ("WA", "53", "washington"),
+    ("WV", "54", "west virginia"), ("WI", "55", "wisconsin"),
+    ("WY", "56", "wyoming"),
+)  # fmt: skip
+_STATE_TO_FIPS = {abbr.lower(): fips for abbr, fips, _ in _STATES}
+_STATE_TO_FIPS.update({name: fips for _, fips, name in _STATES})
+
+
 def resolve_county_fips(input_str: str) -> str:
-    cleaned = input_str.strip().lower()
-    if cleaned in CITY_TO_COUNTY_FIPS:
-        return CITY_TO_COUNTY_FIPS[cleaned]
-    return input_str
+    """Maps a city name (optionally 'City, ST') to a 5-digit county FIPS.
+
+    A trailing state ('Austin, TX' or 'Austin, Texas') is stripped and used
+    to reject same-name cities in other states (e.g. 'Portland, ME' does not
+    resolve to Portland, OR). Unknown inputs are returned unchanged
+    (stripped) so callers can pass FIPS codes straight through.
+    """
+    raw = (input_str or "").strip()
+    city, _, state = raw.partition(",")
+    city = city.strip().lower()
+    state = state.strip().lower().rstrip(".")
+    expected_state_fips = _STATE_TO_FIPS.get(state) if state else None
+
+    # Also accept MSA-style names such as 'Austin-Round Rock, TX'.
+    candidates = [city]
+    if "-" in city:
+        candidates.append(city.split("-", maxsplit=1)[0].strip())
+
+    for candidate in candidates:
+        fips = CITY_TO_COUNTY_FIPS.get(candidate)
+        if not fips:
+            continue
+        if expected_state_fips and not fips.startswith(expected_state_fips):
+            logger.debug(
+                "City %r is mapped to another state; not resolving %r.",
+                candidate,
+                raw,
+            )
+            return raw
+        return fips
+    return raw
 
 
 def get_hud_entity_id(county_fips: str) -> str:
@@ -122,7 +185,9 @@ def fetch_hud_fmr_data(county_fips: str) -> str:
                     indent=2,
                 )
         except Exception as exc:
-            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
+            logger.debug(
+                "HUD lookup failed for %s: %s", county_fips, safe_error(exc)
+            )
             continue
 
     return json.dumps(
@@ -133,17 +198,40 @@ def fetch_hud_fmr_data(county_fips: str) -> str:
     )
 
 
-def fetch_hud_income_limits(county_fips: str) -> str:
+# HUD sizes units at 1.5 persons per bedroom, so a 2-bedroom FMR unit is
+# compared with the income limit of a 3-person household.
+TWO_BEDROOM_HOUSEHOLD_SIZE = 3
+_MAX_HUD_HOUSEHOLD_SIZE = 8
+
+
+def fetch_hud_income_limits(county_fips: str, household_size: int = 1) -> str:
     """
     Fetches HUD Income Limits (AMI) with nested JSON schema matching.
 
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
+        household_size: Household size (1-8) for the 50% AMI (very low
+            income) limit. Defaults to 1 person.
     """
     api_key = get_hud_api_key()
     if not api_key:
         return json.dumps(
             {"ERROR": "HUD_API_KEY empty or invalid format."}, indent=2
+        )
+
+    try:
+        household_size = int(household_size)
+    except (TypeError, ValueError):
+        household_size = 0
+    if not 1 <= household_size <= _MAX_HUD_HOUSEHOLD_SIZE:
+        return json.dumps(
+            {
+                "ERROR": (
+                    "household_size must be an integer between 1 and "
+                    f"{_MAX_HUD_HOUSEHOLD_SIZE}."
+                )
+            },
+            indent=2,
         )
 
     county_fips = resolve_county_fips(county_fips)
@@ -159,23 +247,27 @@ def fetch_hud_income_limits(county_fips: str) -> str:
                 payload = response.json().get("data", {})
                 # SCHEMA: Very Low Income (50% AMI) is stored in 'very_low'
                 very_low = payload.get("very_low", {})
-                # Key: 'il50_p1' for 1-person, 'il50_4' for 4-person
-                income = very_low.get("il50_p1") or payload.get(
+                # Key: 'il50_p1' for 1-person ... 'il50_p8' for 8-person.
+                # Legacy payloads use 'il_data' -> 'il50_<n>'.
+                income = very_low.get(f"il50_p{household_size}") or payload.get(
                     "il_data", {}
-                ).get("il50_4")
+                ).get(f"il50_{household_size}")
 
                 if income:
                     return json.dumps(
                         {
                             "Geography": payload.get("county_name", "Unknown"),
                             "AMI_50_Level": f"${float(income):,.0f}",
+                            "Household_Size": household_size,
                             "Year": year,
                             "Source": f"HUD User API (IL/{year})",
                         },
                         indent=2,
                     )
         except Exception as exc:
-            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
+            logger.debug(
+                "HUD lookup failed for %s: %s", county_fips, safe_error(exc)
+            )
             continue
 
     return json.dumps(
@@ -188,11 +280,18 @@ def analyze_housing_affordability(county_fips: str) -> str:
     """
     Consolidated site-selection affordability report.
 
+    Compares the 2-bedroom Fair Market Rent with the 50% AMI income limit
+    for a 3-person household (HUD's 1.5 persons-per-bedroom convention).
+
     Args:
         county_fips: 5-digit County FIPS code or common city name (e.g. "Austin", "Raleigh") as fallback.
     """
     fmr = json.loads(fetch_hud_fmr_data(county_fips))
-    il = json.loads(fetch_hud_income_limits(county_fips))
+    il = json.loads(
+        fetch_hud_income_limits(
+            county_fips, household_size=TWO_BEDROOM_HOUSEHOLD_SIZE
+        )
+    )
 
     if "ERROR" in fmr or "ERROR" in il:
         return json.dumps(
@@ -220,9 +319,16 @@ def analyze_housing_affordability(county_fips: str) -> str:
         return json.dumps(
             {
                 "Geography": fmr["Geography"],
-                "Analysis": "Housing Affordability vs. 50% AMI",
+                "Analysis": (
+                    "Housing Affordability: 2BR FMR vs. 50% AMI "
+                    f"({TWO_BEDROOM_HOUSEHOLD_SIZE}-person household)"
+                ),
                 "FMR_Rent_2BR": fmr["Rent_2BR"],
                 "Monthly_Income_50_AMI": f"${monthly_income:,.2f}",
+                "Household_Size_Basis": (
+                    f"{TWO_BEDROOM_HOUSEHOLD_SIZE} persons (HUD convention of "
+                    "1.5 persons per bedroom for a 2-bedroom unit)"
+                ),
                 "Rent_to_Income_Ratio": f"{burden_pct:.1f}%",
                 "Site_Selection_Verdict": verdict,
                 "Source": f"Grounded HUD Analytics (FMR:{fmr['Year']}/IL:{il['Year']})",
@@ -230,7 +336,9 @@ def analyze_housing_affordability(county_fips: str) -> str:
             indent=2,
         )
     except Exception as e:
-        return json.dumps({"ERROR": f"Calculation error: {e!s}"}, indent=2)
+        return json.dumps(
+            {"ERROR": f"Calculation error: {safe_error(e)}"}, indent=2
+        )
 
 
 def fetch_hud_usps_crosswalk(zip_code: str) -> str:
@@ -280,7 +388,8 @@ def fetch_hud_usps_crosswalk(zip_code: str) -> str:
                 )
     except Exception as e:
         return json.dumps(
-            {"ERROR": f"USPS Crosswalk lookup failed: {e!s}"}, indent=2
+            {"ERROR": f"USPS Crosswalk lookup failed: {safe_error(e)}"},
+            indent=2,
         )
 
     return json.dumps(
@@ -302,9 +411,17 @@ def fetch_hud_chas_data(county_fips: str) -> str:
         )
 
     county_fips = resolve_county_fips(county_fips)
-    if len(county_fips) != 5:
+    # resolve_county_fips passes unknown names through unchanged, so a
+    # 5-letter city name (e.g. "Tulsa") would otherwise reach int() below.
+    if len(county_fips) != 5 or not county_fips.isdigit():
         return json.dumps(
-            {"ERROR": f"Invalid 5-digit County FIPS code: {county_fips}"},
+            {
+                "ERROR": (
+                    f"Invalid 5-digit County FIPS code: {county_fips}. "
+                    "Resolve the county first (e.g. with "
+                    "fetch_hud_usps_crosswalk for a ZIP code)."
+                )
+            },
             indent=2,
         )
 
@@ -355,7 +472,9 @@ def fetch_hud_chas_data(county_fips: str) -> str:
                     indent=2,
                 )
         except Exception as exc:
-            logger.debug("HUD lookup failed for %s: %s", county_fips, exc)
+            logger.debug(
+                "HUD lookup failed for %s: %s", county_fips, safe_error(exc)
+            )
             continue
 
     return json.dumps(

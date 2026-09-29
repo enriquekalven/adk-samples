@@ -17,19 +17,34 @@ Economic Research Agent (ERA) - ADK 2.0 Implementation.
 Replaces LangChain/LangGraph with native Vertex AI Agent Development Kit.
 """
 
+import logging
 import os
+from collections.abc import Callable
+from typing import Any
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.apps import App
 from google.adk.models import Gemini
+from google.adk.tools import ToolContext
 
+from economic_research.audit_loop import (
+    DRAFT_KEY,
+    REVISIONS_KEY,
+    VERDICT_KEY,
+    AuditedResearchAgent,
+)
 from economic_research.shared_libraries.helper import (
+    _SESSION_API_KEYS,
+    KNOWN_API_KEYS,
+    get_cloud_secret,
     get_default_model,
     get_session_api_key,
     init_session_api_keys,
+    safe_error,
     set_session_api_key,
 )
+from economic_research.shared_libraries.tool_threads import run_all_in_threads
 
 # Specialized Skill Imports
 from economic_research.tools.bea_skill import fetch_bea_regional_data
@@ -94,8 +109,111 @@ for _k, _v in list(os.environ.items()):
     if _v.startswith("<TODO:"):
         del os.environ[_k]
 
+logger = logging.getLogger(__name__)
+
 prompts = Prompts()
 ERA_INSTRUCTIONS = prompts.main_era_instructions()
+
+# Appended to the researcher's instructions when the Auditor Judge is active.
+AUDIT_REVISION_NOTE = """
+
+### Auditor Judge Revisions
+An Auditor Judge reviews each report you write. If the most recent Auditor
+Judge message in this conversation starts with [REJECT], use your tools to fix
+every issue it lists and output the complete corrected report (not a diff).
+"""
+
+
+def _supervisor_bypassed() -> bool:
+    """True when the Auditor Judge and router loops are disabled (e.g. CI)."""
+    return os.getenv("ERA_BYPASS_SUPERVISOR", "").strip().lower() == "true"
+
+
+def _event_text(event: Any) -> str:
+    """Concatenates the text parts of an ADK event.
+
+    Events can have ``content=None`` (state-only, errors, transfers) or parts
+    without text (function calls), so neither may be dereferenced blindly.
+    """
+    return _content_text(getattr(event, "content", None))
+
+
+def _content_text(content: Any) -> str:
+    """Concatenates the text parts of a ``types.Content`` (None-safe)."""
+    parts = getattr(content, "parts", None) if content else None
+    if not parts:
+        return ""
+    return "".join(
+        part.text
+        for part in parts
+        if isinstance(getattr(part, "text", None), str)
+    )
+
+
+def tool_error_to_result(
+    tool: Any, args: dict[str, Any], tool_context: Any, error: Exception
+) -> dict[str, str]:
+    """ADK ``on_tool_error_callback``: turn a tool exception into a result.
+
+    Without this, a single failing tool (bad input, API outage, malformed
+    response) aborts the whole agent run. Only the exception type goes back to
+    the model: exception messages from HTTP clients can embed request URLs
+    that carry API keys.
+    """
+    tool_name = getattr(tool, "name", "unknown_tool")
+    logger.warning(
+        "Tool %s raised %s; returning error result to the model.",
+        tool_name,
+        type(error).__name__,
+    )
+    return {
+        "ERROR": (
+            f"Tool '{tool_name}' failed ({type(error).__name__}). Retry with "
+            "different inputs or continue without this data source, and say "
+            "that this data was unavailable."
+        )
+    }
+
+
+def store_user_api_key(
+    key_name: str, key_value: str, tool_context: ToolContext
+) -> str:
+    """Stores an API key that the user typed in this chat turn.
+
+    Use this only when the user's own message contains the key (for example
+    after you asked them for a missing FRED_API_KEY), then retry the failed
+    operation.
+
+    Args:
+        key_name: The environment variable name, e.g. 'FRED_API_KEY'.
+        key_value: The exact key value from the user's message.
+
+    Returns:
+        A confirmation or an error message.
+    """
+    # Prompt-injection guard: text returned by tools (web pages, API
+    # responses) must not be able to swap in attacker-controlled keys, so the
+    # value has to appear verbatim in the message the user sent this turn.
+    user_text = _content_text(tool_context.user_content)
+    if not key_value or key_value not in user_text:
+        return (
+            "ERROR: The key was not found in the user's latest message. Ask "
+            "the user to paste the key directly in the chat."
+        )
+    return set_session_api_key(key_name, key_value)
+
+
+def ensure_session_key_store(callback_context: Any) -> None:
+    """``before_agent_callback``: create the per-invocation key store.
+
+    Served paths (Agent Runtime, FastAPI, playground) never call
+    ``init_session_api_keys()``. Creating the dict before tools run means a key
+    stored by one tool call is visible to later calls in the same turn (tools
+    run in worker threads with a copy of this context, and share the dict).
+    """
+    del callback_context
+    if _SESSION_API_KEYS.get() is None:
+        init_session_api_keys()
 
 
 class ERAAgent:
@@ -106,11 +224,15 @@ class ERAAgent:
         pass
 
     def get_app(self, model_name: str | None = None) -> App:
-        """Lazily instantiates the ADK App and Agent only when needed."""
+        """Lazily instantiates the ADK App and Agent only when needed.
+
+        Unless ``ERA_BYPASS_SUPERVISOR=true``, the root agent is the audited
+        research loop (researcher -> Auditor Judge -> optional revision).
+        """
         resolved_model = get_default_model(
             model_name or os.getenv("MODEL_NAME")
         )
-        tools = [
+        tools: list[Callable[..., Any]] = [
             labor_force_stats_skill,
             median_hourly_wages_skill,
             state_tax_rate_skill,
@@ -127,7 +249,6 @@ class ERAAgent:
             fetch_state_tax_rates,
             fetch_regional_trade_data,
             fetch_regulatory_notices,
-            set_session_api_key,
             analyze_workforce_exposure,
             fetch_anthropic_economic_index_data,
             fetch_mls_property_listings,
@@ -141,82 +262,121 @@ class ERAAgent:
             estimate_employee_relocation,
             search_macro_series,
         ]
+        # Blocking HTTP tools run in worker threads so one slow upstream API
+        # doesn't stall every session on the event loop.
+        tools = [*run_all_in_threads(tools), store_user_api_key]
 
+        bypass = _supervisor_bypassed()
         era_agent = Agent(
             name="economic_research",
             model=Gemini(model=resolved_model),
-            instruction=ERA_INSTRUCTIONS,
+            instruction=ERA_INSTRUCTIONS
+            if bypass
+            else ERA_INSTRUCTIONS + AUDIT_REVISION_NOTE,
             tools=tools,
+            output_key=DRAFT_KEY,
+            on_tool_error_callback=tool_error_to_result,
+            before_agent_callback=ensure_session_key_store,
         )
-        return App(root_agent=era_agent, name="Economic_Research_Agent")
+        if bypass:
+            return App(root_agent=era_agent, name="Economic_Research_Agent")
+
+        from .sub_agents.agent import JudgeAgent
+
+        audited_agent = AuditedResearchAgent(
+            name="economic_research_audited",
+            description=(
+                "Economic research agent whose reports are fact-checked by an "
+                "Auditor Judge and revised once on rejection."
+            ),
+            researcher=era_agent,
+            judge=JudgeAgent().get_agent(output_key=VERDICT_KEY),
+            max_revisions=1,
+        )
+        return App(root_agent=audited_agent, name="Economic_Research_Agent")
 
     def query(self, input: str) -> str:
-        """Standard Reasoning Engine entry point."""
+        """Standard Reasoning Engine entry point (synchronous).
+
+        Safe to call from code that already runs an event loop (FastAPI,
+        Jupyter, async runtimes): ``asyncio.run`` would raise there, so the
+        query runs on a fresh loop in a worker thread instead.
+        """
         import asyncio
 
-        return asyncio.run(self._query_async(input))
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self._query_async(input))
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, self._query_async(input)).result()
+
+    async def aquery(self, input: str) -> str:
+        """Async entry point for callers that already have an event loop."""
+        return await self._query_async(input)
+
+    async def _run_app(
+        self, app: App, text: str, user_id: str = "default_user"
+    ) -> tuple[str, dict[str, Any]]:
+        """Runs ``app`` once on ``text``.
+
+        Returns:
+            The concatenated text of all events and the final session state.
+        """
+        from google.adk.runners import InMemoryRunner
+        from google.genai import types
+
+        session_id = f"{user_id}_session"
+        runner = InMemoryRunner(app=app)
+        runner.auto_create_session = True
+
+        full_text = ""
+        async for event in runner.run_async(
+            new_message=types.Content(
+                role="user", parts=[types.Part.from_text(text=text)]
+            ),
+            user_id=user_id,
+            session_id=session_id,
+        ):
+            full_text += _event_text(event)
+
+        state: dict[str, Any] = {}
+        try:
+            session = await runner.session_service.get_session(
+                app_name=app.name, user_id=user_id, session_id=session_id
+            )
+            if session is not None:
+                state = dict(session.state)
+        except Exception as exc:  # state is best-effort
+            logger.debug("Could not read session state: %s", exc)
+        return full_text, state
 
     async def _query_async(self, input: str) -> str:
         # Security Fix: Extract and mask API keys in input to prevent logging
         import re
 
         init_session_api_keys()
-        allowed_keys = [
-            "BEA_API_KEY",
-            "FRED_API_KEY",
-            "CENSUS_API_KEY",
-            "EIA_API_KEY",
-            "BLS_API_KEY",
-            "HUD_API_KEY",
-            "FEC_API_KEY",
-            "NEWS_API_KEY",
-            "SERPER_API_KEY",
-            "CDC_APP_TOKEN",
-            "OPENFDA_API_KEY",
-        ]
         modified_input = input
-        for key in allowed_keys:
+        for key in KNOWN_API_KEYS:
             pattern = f"{key}=([^\\s]+)"
             match = re.search(pattern, input)
             if match:
-                key_value = match.group(1)
-                set_session_api_key(key, key_value)
+                set_session_api_key(key, match.group(1))
                 # Mask it in the input string
                 modified_input = re.sub(
                     pattern, f"{key}=**********", modified_input
                 )
-                print(
-                    f"🔒 [Security] Masked {key} in input and set for session."
+                logger.info(
+                    "Masked %s in input and set it for the session.", key
                 )
 
-        # Cloud Secrets fallback using Secret Manager
-        def get_cloud_secret(key_name):
-            val = get_session_api_key(key_name)
-            if val:
-                return val
-            try:
-                from economic_research.shared_libraries.helper import (
-                    access_secret_version,
-                )
-
-                project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-                if not project_id:
-                    import google.auth
-
-                    try:
-                        _, project_id = google.auth.default()
-                    except Exception:
-                        project_id = None
-
-                if project_id:
-                    return access_secret_version(
-                        project_id=project_id, secret_id=key_name
-                    )
-            except Exception:
-                return None
-
-        # Provision keys in session context
-        for key_name in allowed_keys:
+        # Cloud Secrets fallback using Secret Manager (cached per process).
+        for key_name in KNOWN_API_KEYS:
+            if get_session_api_key(key_name):
+                continue
             secret_val = get_cloud_secret(key_name)
             if secret_val:
                 set_session_api_key(key_name, secret_val)
@@ -224,13 +384,11 @@ class ERAAgent:
         # Classify complexity of input query
         model_name = get_default_model(os.getenv("MODEL_NAME"))
         # Check if we should bypass supervisor & judge loops (e.g. to save API quota/rate limits)
-        bypass_loops = os.getenv("ERA_BYPASS_SUPERVISOR") == "true"
+        bypass_loops = _supervisor_bypassed()
 
         if not bypass_loops:
             try:
-                from google.adk.agents import Agent
-                from google.adk.runners import InMemoryRunner
-                from google.genai import types
+                import json
 
                 router_model = get_default_model(os.getenv("MODEL_NAME"))
                 classifier_agent = Agent(
@@ -238,28 +396,11 @@ class ERAAgent:
                     model=Gemini(model=router_model),
                     instruction=prompts.complexity_classifier_instructions(),
                 )
-                classifier_app = App(
-                    root_agent=classifier_agent, name="Router_Supervisor"
-                )
-                classifier_runner = InMemoryRunner(app=classifier_app)
-                classifier_runner.auto_create_session = True
-
-                classifier_responses = classifier_runner.run_async(
-                    new_message=types.Content(
-                        parts=[types.Part.from_text(text=modified_input)]
-                    ),
+                classifier_text, _ = await self._run_app(
+                    App(root_agent=classifier_agent, name="Router_Supervisor"),
+                    modified_input,
                     user_id="classifier_user",
-                    session_id="classifier_session",
                 )
-                classifier_text = ""
-                async for res in classifier_responses:
-                    if hasattr(res, "content") and res.content.parts:
-                        for part in res.content.parts:
-                            if part.text:
-                                classifier_text += part.text
-
-                import json
-
                 cleaned_text = (
                     classifier_text.replace("```json", "")
                     .replace("```", "")
@@ -271,171 +412,61 @@ class ERAAgent:
                     model_name = get_default_model(
                         os.getenv("MODEL_NAME_GENERATED_1")
                     )
-                    print(
-                        "🧠 [Router] Detected high complexity task. Routing to gemini-3.1-pro."
+                    logger.info(
+                        "[Router] High complexity task; routing to %s.",
+                        model_name,
                     )
                 else:
-                    print(
-                        "⚡ [Router] Detected low complexity task. Routing to gemini-3.5-flash."
+                    logger.info(
+                        "[Router] Low complexity task; routing to %s.",
+                        model_name,
                     )
             except Exception as e:
-                print(
-                    f"⚠️ [Router] Routing failed: {e}. Falling back to gemini-3.5-flash."
+                logger.warning(
+                    "[Router] Routing failed (%s); falling back to %s.",
+                    safe_error(e),
+                    model_name,
                 )
 
-        # Instantiate App & Runner at runtime rather than deploy-time
-        app = self.get_app(model_name=model_name)
-
-        from google.adk.runners import InMemoryRunner
-        from google.genai import types
-
-        runner = InMemoryRunner(app=app)
-        runner.auto_create_session = True
-
+        # Instantiate App & Runner at runtime rather than deploy-time.
+        # Unless bypassed, the app's root agent already runs the Auditor Judge
+        # loop (see economic_research/audit_loop.py).
         try:
-            responses = runner.run_async(
-                new_message=types.Content(
-                    parts=[types.Part.from_text(text=modified_input)]
-                ),
-                user_id="default_user",
-                session_id="default_session",
+            full_text, state = await self._run_app(
+                self.get_app(model_name=model_name), modified_input
             )
-            full_text = ""
-            async for res in responses:
-                if hasattr(res, "content") and res.content.parts:
-                    for part in res.content.parts:
-                        if part.text:
-                            full_text += part.text
         except Exception as e:
             if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                print(
-                    "⚠️ [Quota] gemini-3.1-pro exhausted. Falling back to gemini-3.5-flash for synthesis..."
+                fallback_model = get_default_model(os.getenv("MODEL_NAME"))
+                logger.warning(
+                    "[Quota] %s exhausted; falling back to %s.",
+                    model_name,
+                    fallback_model,
                 )
-                app = self.get_app(model_name=os.getenv("MODEL_NAME"))
-                runner = InMemoryRunner(app=app)
-                runner.auto_create_session = True
-                responses = runner.run_async(
-                    new_message=types.Content(
-                        parts=[types.Part.from_text(text=modified_input)]
-                    ),
-                    user_id="default_user",
-                    session_id="default_session",
+                full_text, state = await self._run_app(
+                    self.get_app(model_name=fallback_model), modified_input
                 )
-                full_text = ""
-                async for res in responses:
-                    if hasattr(res, "content") and res.content.parts:
-                        for part in res.content.parts:
-                            if part.text:
-                                full_text += part.text
             else:
-                raise e
+                raise
 
-        # ⚖️ Active Actor-Critic Loop (Self-Correction)
-        if not bypass_loops:
-            try:
-                from .sub_agents.agent import JudgeAgent
-
-                judge = JudgeAgent().get_agent()
-                judge_app = App(root_agent=judge, name="Judge_Review")
-                judge_runner = InMemoryRunner(app=judge_app)
-                judge_runner.auto_create_session = True
-
-                # Iteration 1: Judge the initial draft
-                judge_prompt = (
-                    "Please audit this draft report. Use Google Search to verify quantitative claims if needed. "
-                    "If you find contradictions or hallucinations, start your response with '[REJECT]' and explain exactly what to fix."
-                    f"\n\nDraft:\n{full_text}"
-                )
-                judge_responses = judge_runner.run_async(
-                    new_message=types.Content(
-                        parts=[types.Part.from_text(text=judge_prompt)]
-                    ),
-                    user_id="judge_user",
-                    session_id="judge_session",
-                )
-
-                judge_text = ""
-                async for res in judge_responses:
-                    if hasattr(res, "content") and res.content.parts:
-                        for part in res.content.parts:
-                            if part.text:
-                                judge_text += part.text
-
-                # If rejected, run Researcher again with the correction context!
-                if "[REJECT]" in judge_text:
-                    print(
-                        "⚠️ [Actor-Critic] Judge rejected the draft! Self-correcting..."
-                    )
-                    correction_prompt = (
-                        f"Your previous draft was REJECTED by the Auditor Judge. Please use your tools to FIX the following discrepancies and generate a final report:\n\n"
-                        f"### Auditor Feedback:\n{judge_text}\n\n"
-                        f"### Previous Draft:\n{full_text}"
-                    )
-
-                    try:
-                        retry_responses = runner.run_async(
-                            new_message=types.Content(
-                                parts=[
-                                    types.Part.from_text(text=correction_prompt)
-                                ]
-                            ),
-                            user_id="default_user",
-                            session_id="default_session",
-                        )
-                        corrected_text = ""
-                        async for res in retry_responses:
-                            if hasattr(res, "content") and res.content.parts:
-                                for part in res.content.parts:
-                                    if part.text:
-                                        corrected_text += part.text
-                    except Exception as e:
-                        if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                            print(
-                                "⚠️ [Quota] gemini-3.1-pro exhausted on correction. Falling back to gemini-3.5-flash..."
-                            )
-                            app = self.get_app(
-                                model_name=os.getenv("MODEL_NAME")
-                            )
-                            runner = InMemoryRunner(app=app)
-                            runner.auto_create_session = True
-                            retry_responses = runner.run_async(
-                                new_message=types.Content(
-                                    parts=[
-                                        types.Part.from_text(
-                                            text=correction_prompt
-                                        )
-                                    ]
-                                ),
-                                user_id="default_user",
-                                session_id="default_session",
-                            )
-                            corrected_text = ""
-                            async for res in retry_responses:
-                                if (
-                                    hasattr(res, "content")
-                                    and res.content.parts
-                                ):
-                                    for part in res.content.parts:
-                                        if part.text:
-                                            corrected_text += part.text
-                        else:
-                            raise e
-
-                    final_report = f"{corrected_text}\n\n---\n### ⚖️ Auditor Judge Verification (Self-Corrected v2)\n{judge_text}"
-                else:
-                    final_report = f"{full_text}\n\n---\n### ⚖️ Auditor Judge Verification (Passed v1)\n{judge_text}"
-
-            except Exception as e:
-                final_report = (
-                    f"{full_text}\n\n---\n⚠️ *Judge verification failed: {e}*"
-                )
+        # ⚖️ Compose the final report from the audited loop's session state.
+        draft = state.get(DRAFT_KEY) or full_text
+        verdict = state.get(VERDICT_KEY)
+        if verdict:
+            label = (
+                "Self-Corrected v2" if state.get(REVISIONS_KEY) else "Passed v1"
+            )
+            final_report = (
+                f"{draft}\n\n---\n### ⚖️ Auditor Judge Verification "
+                f"({label})\n{verdict}"
+            )
         else:
-            final_report = full_text
+            final_report = draft
 
         # Calculate Economic Primitives of the completed session
         if not bypass_loops:
             try:
-                from google.adk.agents import Agent
+                import json
 
                 eval_model = get_default_model(os.getenv("MODEL_NAME"))
                 evaluator_agent = Agent(
@@ -454,30 +485,16 @@ class ERAAgent:
                     Output your evaluation as a valid JSON object. Do not include markdown formatting or additional explanation.
                     """,
                 )
-                evaluator_app = App(
-                    root_agent=evaluator_agent, name="Primitives_Evaluator"
-                )
-                evaluator_runner = InMemoryRunner(app=evaluator_app)
-                evaluator_runner.auto_create_session = True
-
                 evaluation_prompt = f"### User Query:\n{modified_input}\n\n### Agent Final Response:\n{final_report}"
-                eval_responses = evaluator_runner.run_async(
-                    new_message=types.Content(
-                        parts=[types.Part.from_text(text=evaluation_prompt)]
+                eval_text, _ = await self._run_app(
+                    App(
+                        root_agent=evaluator_agent, name="Primitives_Evaluator"
                     ),
+                    evaluation_prompt,
                     user_id="evaluator_user",
-                    session_id="evaluator_session",
                 )
-                eval_text = ""
-                async for res in eval_responses:
-                    if hasattr(res, "content") and res.content.parts:
-                        for part in res.content.parts:
-                            if part.text:
-                                eval_text += part.text
 
                 # Save or log the metrics
-                import json
-
                 cleaned_eval = (
                     eval_text.replace("```json", "").replace("```", "").strip()
                 )
@@ -507,12 +524,15 @@ class ERAAgent:
                         indent=2,
                     )
 
-                print(
-                    f"📊 [Observability] Logged Economic Primitives to {log_path}: {primitives}"
+                logger.info(
+                    "[Observability] Logged economic primitives to %s: %s",
+                    log_path,
+                    primitives,
                 )
             except Exception as e:
-                print(
-                    f"⚠️ [Observability] Failed to evaluate economic primitives: {e}"
+                logger.warning(
+                    "[Observability] Failed to evaluate economic primitives: %s",
+                    safe_error(e),
                 )
 
         return final_report
@@ -557,3 +577,23 @@ root_agent = export_agent.get_app().root_agent
 
 # Export the App as 'agent' for run_eval.py
 agent = export_agent.get_app()
+
+
+def main() -> None:
+    """Interactive terminal session (used by `make run`)."""
+    print("🧠 Economic Research Agent. Type 'exit' or press Ctrl-D to quit.")
+    while True:
+        try:
+            question = input("\nYou: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit"}:
+            break
+        print(f"\nERA:\n{export_agent.query(question)}")
+
+
+if __name__ == "__main__":
+    main()

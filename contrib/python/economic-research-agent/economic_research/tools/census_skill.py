@@ -15,11 +15,108 @@
 """ADK Skill: Census ACS. Demographic & Educational Attainment."""
 
 import json
+import logging
 import os
 
 import requests
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    get_session_api_key,
+    safe_error,
+)
+
+logger = logging.getLogger(__name__)
+
+CENSUS_ACS_PROFILE_URL = "https://api.census.gov/data/2023/acs/acs1/profile"
+
+# The Census API encodes "no estimate" annotations as large negative
+# sentinels (e.g. -999999999, -888888888, -666666666, -555555555,
+# -333333333, -222222222). A percentage can never be negative, so any
+# negative value is treated as "not available".
+_NOT_AVAILABLE = "N/A"
+
+
+def _format_census_percentage(raw_value) -> tuple[str, str | None]:
+    """Formats an ACS percentage, mapping sentinels/non-numerics to N/A.
+
+    Returns:
+        A ``(display_value, note)`` tuple. ``note`` explains why the value
+        is N/A, or is ``None`` for a valid estimate.
+    """
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        return _NOT_AVAILABLE, "Census returned a non-numeric estimate."
+    if value < 0:
+        return (
+            _NOT_AVAILABLE,
+            f"Census annotation value {raw_value} (estimate not available).",
+        )
+    return f"{raw_value}%", None
+
+
+def _fetch_county_education(
+    city_clean: str, full_fips: str, census_key: str
+) -> dict:
+    """Fetches one county. Errors are reported per city, never raised."""
+    state_fips = full_fips[:2]
+    county_fips = full_fips[2:]
+
+    # Variables: DP02_0068E (Education Attainment - Bachelor's or Higher)
+    # Dataset: ACS 1-Year Data Profiles (2022/2023)
+    params = {
+        "get": "NAME,DP02_0068PE",
+        "for": f"county:{county_fips}",
+        "in": f"state:{state_fips}",
+        "key": census_key,
+    }
+
+    try:
+        response = requests.get(
+            CENSUS_ACS_PROFILE_URL, params=params, timeout=HTTP_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning("Census request failed: %s", safe_error(exc))
+        return {
+            "City": city_clean,
+            "Status": f"Census API request failed ({safe_error(exc)})",
+        }
+
+    if response.status_code != 200:
+        return {
+            "City": city_clean,
+            "Status": f"Census API Failure ({response.status_code})",
+        }
+
+    try:
+        data = response.json()
+    except ValueError:
+        # An invalid or unactivated key returns an HTML page with HTTP 200.
+        return {
+            "City": city_clean,
+            "Status": (
+                "Census API returned a non-JSON response (often an invalid "
+                "or unactivated CENSUS_API_KEY)."
+            ),
+        }
+
+    if not isinstance(data, list) or len(data) <= 1 or len(data[1]) < 2:
+        return {"City": city_clean, "Status": "Census returned empty dataset."}
+
+    row = data[1]
+    name = row[0]
+    value, note = _format_census_percentage(row[1])
+    result = {
+        "City": city_clean,
+        "Geography": name,
+        "Metric": "Bachelor's Degree or Higher (%)",
+        "Value": value,
+        "Source": "U.S. Census Bureau ACS (DP02 2023)",
+    }
+    if note:
+        result["Note"] = note
+    return result
 
 
 def fetch_census_education_stats(city_names: list[str]) -> str:
@@ -61,48 +158,11 @@ def fetch_census_education_stats(city_names: list[str]) -> str:
                 )
                 continue
 
-            state_fips = full_fips[:2]
-            county_fips = full_fips[2:]
-
-            # Variables: DP02_0068E (Education Attainment - Bachelor's or Higher)
-            # Dataset: ACS 1-Year Data Profiles (2022/2023)
-            url = (
-                f"https://api.census.gov/data/2023/acs/acs1/profile?get=NAME,DP02_0068PE"
-                f"&for=county:{county_fips}&in=state:{state_fips}&key={census_key}"
+            results.append(
+                _fetch_county_education(city_clean, full_fips, census_key)
             )
-
-            response = requests.get(url, timeout=12)
-            if response.status_code == 200:
-                data = response.json()
-                if len(data) > 1:
-                    row = data[1]
-                    pct = row[1]
-                    name = row[0]
-                    results.append(
-                        {
-                            "City": city_clean,
-                            "Geography": name,
-                            "Metric": "Bachelor's Degree or Higher (%)",
-                            "Value": f"{pct}%",
-                            "Source": "U.S. Census Bureau ACS (DP02 2023)",
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "City": city_clean,
-                            "Status": "Census returned empty dataset.",
-                        }
-                    )
-            else:
-                results.append(
-                    {
-                        "City": city_clean,
-                        "Status": f"Census API Failure ({response.status_code})",
-                    }
-                )
 
         return json.dumps(results, indent=2)
 
     except Exception as e:
-        return json.dumps({"ERROR": str(e)}, indent=2)
+        return json.dumps({"ERROR": safe_error(e)}, indent=2)

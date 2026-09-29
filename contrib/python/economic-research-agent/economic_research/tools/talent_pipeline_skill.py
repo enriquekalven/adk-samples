@@ -18,6 +18,8 @@ import json
 
 from pydantic import BaseModel, Field
 
+from economic_research.shared_libraries.helper import SANDBOX_SOURCE
+
 
 class TalentRequest(BaseModel):
     city_names: list[str] = Field(
@@ -36,6 +38,10 @@ def get_talent_pipeline_roi(
     """
     Fetches IPEDS (Higher Ed) graduation numbers and USPTO (Patent) data.
     Companies move for tomorrow's graduates and innovation output.
+
+    The figures are static, illustrative benchmarks (not live IPEDS/USPTO
+    queries) and are not broken down by major: ``target_major`` is echoed in
+    the output for context only and does not change the numbers.
     """
     results = []
 
@@ -63,7 +69,11 @@ def get_talent_pipeline_roi(
                 "Major Pipeline": target_major,
                 "Grad Rate Shift (3yr)": data["grad_rate_3yr"],
                 "Annual Patent Output": data["patents"],
-                "Source": "IPEDS & USPTO Data (Grounded)",
+                "Note": (
+                    "Illustrative all-major benchmarks; not specific to "
+                    f"'{target_major}'."
+                ),
+                "Source": f"{SANDBOX_SOURCE} - IPEDS & USPTO-style benchmarks",
             }
         )
 

@@ -20,6 +20,8 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller
 
+from economic_research.shared_libraries.helper import safe_error
+
 
 def run_econometric_regression(
     dependent_values: list[float],
@@ -33,6 +35,7 @@ def run_econometric_regression(
     Args:
         dependent_values: List of numerical values for the dependent variable (Y).
         independent_values: List of numerical values (or list of lists) for the independent variables (X).
+            Ignored (and may be empty) for "ADF", which tests dependent_values alone.
         independent_names: Optional labels for the independent variables.
         analysis_type: The type of analysis. Must be one of: "OLS", "correlation", "ADF".
 
@@ -40,30 +43,34 @@ def run_econometric_regression(
         JSON string containing the statistical results and clean tabular outputs.
     """
     try:
-        # Standardize independent_values to list of lists
-        if not independent_values:
-            return json.dumps(
-                {"ERROR": "independent_values is empty."}, indent=2
-            )
+        analysis_clean = analysis_type.upper().strip()
 
-        if not isinstance(independent_values[0], list):
-            # Convert single list [1.0, 2.0, ...] to [[1.0, 2.0, ...]]
-            x_matrix = [independent_values]
-        else:
-            x_matrix = independent_values
-
-        # Validation checks
-        y_len = len(dependent_values)
-        for idx, x_list in enumerate(x_matrix):
-            if len(x_list) != y_len:
+        # ADF tests dependent_values alone; X is ignored, so it is neither
+        # required nor length-checked.
+        x_matrix: list = []
+        if analysis_clean != "ADF":
+            # Standardize independent_values to list of lists
+            if not independent_values:
                 return json.dumps(
-                    {
-                        "ERROR": f"Dimension mismatch: dependent has length {y_len}, but independent variable {idx} has length {len(x_list)}."
-                    },
-                    indent=2,
+                    {"ERROR": "independent_values is empty."}, indent=2
                 )
 
-        analysis_clean = analysis_type.upper().strip()
+            if not isinstance(independent_values[0], list):
+                # Convert single list [1.0, 2.0, ...] to [[1.0, 2.0, ...]]
+                x_matrix = [independent_values]
+            else:
+                x_matrix = independent_values
+
+            # Validation checks
+            y_len = len(dependent_values)
+            for idx, x_list in enumerate(x_matrix):
+                if len(x_list) != y_len:
+                    return json.dumps(
+                        {
+                            "ERROR": f"Dimension mismatch: dependent has length {y_len}, but independent variable {idx} has length {len(x_list)}."
+                        },
+                        indent=2,
+                    )
 
         if analysis_clean == "OLS":
             # Build DataFrame
@@ -172,5 +179,6 @@ def run_econometric_regression(
 
     except Exception as e:
         return json.dumps(
-            {"ERROR": f"Econometric computation failed: {e!s}"}, indent=2
+            {"ERROR": f"Econometric computation failed: {safe_error(e)}"},
+            indent=2,
         )

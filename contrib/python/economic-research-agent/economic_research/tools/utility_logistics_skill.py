@@ -18,6 +18,8 @@ import json
 
 from pydantic import BaseModel, Field
 
+from economic_research.shared_libraries.helper import SANDBOX_SOURCE
+
 
 class UtilityRequest(BaseModel):
     state_names: list[str] = Field(
@@ -55,6 +57,7 @@ def get_industrial_infrastructure_stats(state_names: list[str]) -> str:
                 and len(parsed_eia) > 0
                 and "Avg Price (cents/kWh)" in parsed_eia[0]
             ):
+                # Raises ValueError on "N/A" (null EIA price) -> fallback.
                 cents_kwh = float(parsed_eia[0]["Avg Price (cents/kWh)"])
                 usd_kwh = f"${cents_kwh / 100:.3f}"
                 period = parsed_eia[0].get("Period", "2024")
@@ -62,23 +65,26 @@ def get_industrial_infrastructure_stats(state_names: list[str]) -> str:
                     {
                         "State": state,
                         "Industrial Elec (kWh)": usd_kwh,
-                        "Renewable Share (%)": "Moderate (EIA Regional Average)",
-                        "Fiber Optic Density": "Tier 1 (FCC Broadband Map Grounding)",
                         "Source": f"EIA Unified API Live ({period})",
+                        # Not fetched from any API; static placeholders.
+                        "Renewable Share (%)": "Moderate",
+                        "Fiber Optic Density": "Tier 1",
+                        "Infrastructure Source": SANDBOX_SOURCE,
                     }
                 )
                 continue
-        except Exception:
+        except (TypeError, ValueError):
             parsed_eia = None
 
-        # Fallback if live EIA fails
+        # Live EIA data unavailable: static benchmark, clearly labelled.
         results.append(
             {
                 "State": state,
                 "Industrial Elec (kWh)": "$0.075",
                 "Renewable Share (%)": "Moderate",
                 "Fiber Optic Density": "Tier 1",
-                "Source": "EIA Industrial Benchmark (Fallback)",
+                "Source": f"{SANDBOX_SOURCE}: national industrial benchmark "
+                "(live EIA data unavailable)",
             }
         )
 

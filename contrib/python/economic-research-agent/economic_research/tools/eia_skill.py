@@ -20,10 +20,22 @@ import os
 
 import requests
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    get_session_api_key,
+    safe_error,
+)
 
 # Configure basic logging
 logger = logging.getLogger(__name__)
+
+
+def _format_price(raw_price) -> str:
+    """Formats an EIA price; null or non-numeric values become 'N/A'."""
+    try:
+        return f"{float(raw_price):.2f}"
+    except (TypeError, ValueError):
+        return "N/A"
 
 
 def fetch_state_electricity_rates(
@@ -53,6 +65,17 @@ def fetch_state_electricity_rates(
 
     for state in state_codes:
         state_clean = state.upper().strip()
+        if len(state_clean) != 2 or not state_clean.isalpha():
+            results.append(
+                {
+                    "State": state_clean,
+                    "Status": (
+                        "Invalid state code; expected a 2-letter postal "
+                        "abbreviation (e.g. 'TX')."
+                    ),
+                }
+            )
+            continue
         url = (
             f"https://api.eia.gov/v2/electricity/retail-sales/data/?api_key={eia_key}"
             f"&frequency=monthly&data[0]=price"
@@ -62,7 +85,7 @@ def fetch_state_electricity_rates(
         )
 
         try:
-            response = requests.get(url, timeout=12)
+            response = requests.get(url, timeout=HTTP_TIMEOUT_SECONDS)
             if response.status_code == 200:
                 full_data = response.json()
                 # EIA v2 often wraps data in 'response' -> 'data'
@@ -73,15 +96,19 @@ def fetch_state_electricity_rates(
 
                 if data_list:
                     latest = data_list[0]
-                    results.append(
-                        {
-                            "State": state_clean,
-                            "Sector": sector.capitalize(),
-                            "Avg Price (cents/kWh)": f"{float(latest.get('price', 0)):.2f}",
-                            "Period": latest.get("period", "Unknown"),
-                            "Source": "U.S. Energy Information Administration (EIA v2)",
-                        }
-                    )
+                    price = _format_price(latest.get("price"))
+                    entry = {
+                        "State": state_clean,
+                        "Sector": sector.capitalize(),
+                        "Avg Price (cents/kWh)": price,
+                        "Period": latest.get("period", "Unknown"),
+                        "Source": "U.S. Energy Information Administration (EIA v2)",
+                    }
+                    if price == "N/A":
+                        entry["Note"] = (
+                            "EIA reported no numeric price for this period."
+                        )
+                    results.append(entry)
                 else:
                     results.append(
                         {
@@ -97,7 +124,10 @@ def fetch_state_electricity_rates(
                     }
                 )
         except Exception as e:
-            results.append({"State": state_clean, "Status": f"Error: {e!s}"})
+            logger.warning("EIA request failed: %s", safe_error(e))
+            results.append(
+                {"State": state_clean, "Status": f"Error: {safe_error(e)}"}
+            )
 
     if not results:
         return json.dumps(

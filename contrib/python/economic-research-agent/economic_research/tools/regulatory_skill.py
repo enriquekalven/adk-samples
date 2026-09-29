@@ -39,27 +39,31 @@ def fetch_regulatory_notices(
     """
     results = []
 
-    try:
-        for state in state_names:
+    for state in state_names:
+        try:
             # Query Federal Register for the state + industry/topic
             # Example API: https://www.federalregister.gov/api/v1/documents.json
             query = f"{state} {industry_topic}"
-            url = f"https://www.federalregister.gov/api/v1/documents.json?conditions[term]={query}&per_page=5"
-
-            response = requests.get(url, timeout=12)
+            # params= URL-encodes the term, so topics like "Oil & Gas" survive.
+            response = requests.get(
+                "https://www.federalregister.gov/api/v1/documents.json",
+                params={"conditions[term]": query, "per_page": 5},
+                timeout=12,
+            )
             if response.status_code == 200:
                 data = response.json()
-                filings = data.get("results", [])
+                filings = data.get("results") or []
 
                 state_results = []
                 for f in filings:
+                    agencies = f.get("agency_names") or ["N/A"]
                     state_results.append(
                         {
                             "Title": f.get("title"),
                             "Action": f.get("action"),
                             "Date": f.get("publication_date"),
                             "URL": f.get("html_url"),
-                            "Agency": f.get("agency_names", ["N/A"])[0],
+                            "Agency": agencies[0],
                         }
                     )
 
@@ -77,8 +81,12 @@ def fetch_regulatory_notices(
                 results.append(
                     {"State": state, "ERROR": f"Status {response.status_code}"}
                 )
+        except Exception as e:  # keep other states' results
+            results.append(
+                {
+                    "State": state,
+                    "ERROR": f"Federal Register lookup failed: {type(e).__name__}",
+                }
+            )
 
-        return json.dumps(results, indent=2)
-
-    except Exception as e:
-        return json.dumps({"ERROR": str(e)}, indent=2)
+    return json.dumps(results, indent=2)

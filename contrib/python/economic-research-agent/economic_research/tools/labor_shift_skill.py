@@ -16,12 +16,15 @@
 
 import json
 import logging
-import os
 from typing import Any
 
-from fredapi import Fred
+from economic_research.shared_libraries.fred_client import get_fred_client
+from economic_research.shared_libraries.helper import (
+    SANDBOX_SOURCE,
+    safe_error,
+)
 
-from economic_research.shared_libraries.helper import get_session_api_key
+logger = logging.getLogger(__name__)
 
 # Standard MSA code mapping for top MSAs
 MSA_CODES = {
@@ -69,23 +72,25 @@ def resolve_sector_series(
                 fred.get_series_metadata(series_id)
                 return series_id
             except Exception as exc:
-                logging.getLogger(__name__).debug(
-                    "FRED metadata lookup failed for %s: %s", series_id, exc
+                logger.debug(
+                    "FRED metadata lookup failed for %s: %s",
+                    series_id,
+                    safe_error(exc),
                 )
 
     # Fallback to search
     query = f"{city_name} {search_phrase}"
     try:
         results = fred.search(query)
-        if not results.empty:
+        # fredapi returns None (not an empty frame) when nothing matches.
+        if results is not None and not results.empty:
+            check_word = sector_name.split("&")[0].split(",")[0].strip().lower()
             for idx, row in results.iterrows():
-                title = row.get("title", "").lower()
-                check_word = (
-                    sector_name.split("&")[0].split(",")[0].strip().lower()
-                )
-                if check_word in title:
+                title = str(row.get("title", "")).lower()
+                if check_word in title and city_name.lower() in title:
                     return idx
-            return results.index[0]
+            # No title matches this sector and city: do not fall back to an
+            # unrelated first hit.
     except Exception:
         return None
     return None
@@ -95,11 +100,12 @@ def model_labor_shifts(city_names: list[str]) -> str:
     """
     Forecasts regional labor market disruption and AI diffusion shifts (automation risk,
     productivity growth, and occupational transition forecasts) for target metropolitan areas.
+
+    Live results are computed from FRED sector employment; otherwise static
+    illustrative profiles are returned and labelled as such in "Source".
     """
     results: list[dict[str, Any]] = []
-    fred_key = (
-        get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY")) or ""
-    ).strip()
+    fred = get_fred_client()  # None when FRED_API_KEY is missing
 
     # 1. Static profiles (Fallback database)
     regional_forecasts: dict[str, dict[str, Any]] = {
@@ -162,10 +168,8 @@ def model_labor_shifts(city_names: list[str]) -> str:
     }
 
     # 2. Live API Calculation
-    if fred_key:
+    if fred is not None:
         try:
-            fred = Fred(api_key=fred_key)
-
             for city in city_names:
                 city_clean = city.split(",")[0].strip()
                 msa_code = MSA_CODES.get(city_clean)
@@ -177,7 +181,7 @@ def model_labor_shifts(city_names: list[str]) -> str:
                         search_res = fred.search(
                             f"{city_clean} total nonfarm employment"
                         )
-                        if not search_res.empty:
+                        if search_res is not None and not search_res.empty:
                             total_series_id = search_res.index[0]
                     except Exception:
                         total_series_id = None
@@ -185,7 +189,10 @@ def model_labor_shifts(city_names: list[str]) -> str:
                 if total_series_id:
                     try:
                         total_series = fred.get_series(total_series_id)
-                        if not total_series.empty:
+                        # FRED '.' observations become NaN; drop them.
+                        if total_series is not None:
+                            total_series = total_series.dropna()
+                        if total_series is not None and not total_series.empty:
                             total_emp = total_series.iloc[-1]
 
                             weighted_exposure_sum = 0.0
@@ -214,7 +221,12 @@ def model_labor_shifts(city_names: list[str]) -> str:
                                 if series_id:
                                     try:
                                         emp_series = fred.get_series(series_id)
-                                        if not emp_series.empty:
+                                        if emp_series is not None:
+                                            emp_series = emp_series.dropna()
+                                        if (
+                                            emp_series is not None
+                                            and not emp_series.empty
+                                        ):
                                             emp = emp_series.iloc[-1]
                                             weighted_exposure_sum += (
                                                 emp * SECTOR_EXPOSURE[sector]
@@ -224,10 +236,10 @@ def model_labor_shifts(city_names: list[str]) -> str:
                                                 emp / total_emp
                                             ) * 100.0
                                     except Exception as exc:
-                                        logging.getLogger(__name__).debug(
+                                        logger.debug(
                                             "FRED sector series lookup failed for %s: %s",
                                             series_id,
-                                            exc,
+                                            safe_error(exc),
                                         )
                                         continue
 
@@ -285,22 +297,31 @@ def model_labor_shifts(city_names: list[str]) -> str:
                                         "3-Year Projected Displacement": displacement,
                                         "Key Affected Roles": affected_roles,
                                         "Strategic Driver": driver,
+                                        "Source": (
+                                            "FRED sector employment (live) "
+                                            "weighted by static sector "
+                                            "exposure model"
+                                        ),
                                     }
                                 )
                                 continue
                     except Exception as e:
-                        print(
-                            f"⚠️ Dynamic FRED labor shift calculation failed for {city}: {e}"
+                        logger.warning(
+                            "Dynamic FRED labor shift calculation failed for "
+                            "%s: %s",
+                            city,
+                            safe_error(e),
                         )
 
         except Exception as e:
-            print(
-                f"⚠️ FRED connection failed: {e}. Falling back to sandbox database."
+            logger.warning(
+                "FRED connection failed (%s); falling back to sandbox data.",
+                safe_error(e),
             )
 
     # 3. Fallback database matching
     for city in city_names:
-        if any(res.get("City") == city for res in results):
+        if any(res.get("City") == city.strip() for res in results):
             continue
 
         city_clean = city.lower().split(",")[0].strip()
@@ -326,18 +347,26 @@ def model_labor_shifts(city_names: list[str]) -> str:
                         "highly_exposed_occupations"
                     ],
                     "Strategic Driver": matched_data["primary_driver"],
+                    "Source": SANDBOX_SOURCE,
                 }
             )
         else:
+            # 50/50 is a neutral placeholder, not a computed score; the
+            # labels below say so explicitly.
             results.append(
                 {
                     "City": city.strip(),
                     "Vulnerability Index (0-100)": 50,
                     "Augmentation Potential (0-100)": 50,
+                    "Score Type": (
+                        "DEFAULT PLACEHOLDER (neutral 50/50), not a computed "
+                        "score"
+                    ),
                     "3-Year Projected Productivity": "Unknown",
                     "3-Year Projected Displacement": "Requires manual evaluation",
                     "Key Affected Roles": ["N/A"],
                     "Strategic Driver": f"Macro profile not pre-mapped for '{city}'. General regional metrics (BLS/Census) required for custom forecast.",
+                    "Source": f"{SANDBOX_SOURCE} - default placeholder",
                 }
             )
 

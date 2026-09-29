@@ -22,16 +22,20 @@ import os
 import urllib.request
 from typing import Any
 
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from economic_research.shared_libraries.helper import get_session_api_key
-
-env_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    SANDBOX_SOURCE,
+    get_default_model,
+    get_session_api_key,
+    safe_error,
 )
-load_dotenv(env_path)
+
+# Note: .env is loaded (and '<TODO:' placeholders stripped) once in
+# economic_research/__init__.py. Do not call load_dotenv() here: this module
+# is imported lazily and would re-inject placeholder values as real keys.
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +62,15 @@ def execute_serper_search(query: str) -> str:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=12) as response:  # noqa: S310
+        with urllib.request.urlopen(  # noqa: S310
+            req, timeout=HTTP_TIMEOUT_SECONDS
+        ) as response:
             res_data = response.read().decode("utf-8")
             return res_data
     except Exception as e:
-        logger.error(f"Serper search failed for query '{query}': {e}")
+        logger.error(
+            "Serper search failed for query %r: %s", query, safe_error(e)
+        )
         return "{}"
 
 
@@ -75,11 +83,46 @@ def harvest_semantic_schema(
     """
     Executes a Serper search, then passes the organic payload to Gemini to extract a structured JSON object matching the exact expected keys.
     """
+    data, _ = _harvest_with_provenance(
+        query, schema_instruction, expected_keys, fallbacks
+    )
+    return data
+
+
+def _source_label(
+    live_source: str, fallback_keys: list[str], expected_keys: list[str]
+) -> str:
+    """Labels a harvested record; heuristic fallbacks are never 'Live'."""
+    if not fallback_keys:
+        return live_source
+    if set(fallback_keys) >= set(expected_keys):
+        return (
+            f"{SANDBOX_SOURCE}: heuristic default estimates (live search "
+            "unavailable)"
+        )
+    return (
+        f"{live_source}; heuristic default estimates (NOT live) for: "
+        + ", ".join(fallback_keys)
+    )
+
+
+def _harvest_with_provenance(
+    query: str,
+    schema_instruction: str,
+    expected_keys: list[str],
+    fallbacks: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Like ``harvest_semantic_schema`` but also returns fallback keys.
+
+    Returns:
+        ``(data, fallback_keys)`` where ``fallback_keys`` lists the expected
+        keys whose value came from ``fallbacks`` rather than live search.
+    """
     search_payload = execute_serper_search(query)
 
     # If the payload is empty, return the fallbacks immediately to save API quota
     if search_payload == "{}" or len(search_payload) < 50:
-        return fallbacks
+        return fallbacks, list(expected_keys)
 
     try:
         client = genai.Client()
@@ -99,7 +142,7 @@ def harvest_semantic_schema(
         """
 
         response = client.models.generate_content(
-            model=os.getenv("MODEL_NAME"),
+            model=get_default_model(),
             contents=extraction_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -108,8 +151,12 @@ def harvest_semantic_schema(
 
         parsed_data = json.loads(response.text.strip())
 
+        if not isinstance(parsed_data, dict):
+            raise ValueError("Gemini returned a non-object JSON payload.")
+
         # Validate that ALL expected keys are present in the parsed_data, filling with fallbacks if missing
         final_data = {}
+        fallback_keys = []
         for key in expected_keys:
             if key in parsed_data and parsed_data[key] not in [
                 "N/A",
@@ -120,14 +167,17 @@ def harvest_semantic_schema(
                 final_data[key] = parsed_data[key]
             else:
                 final_data[key] = fallbacks.get(key, "N/A")
+                fallback_keys.append(key)
 
-        return final_data
+        return final_data, fallback_keys
 
     except Exception as e:
         logger.error(
-            f"Gemini schema extraction failed for query '{query}': {e}"
+            "Gemini schema extraction failed for query %r: %s",
+            query,
+            safe_error(e),
         )
-        return fallbacks
+        return fallbacks, list(expected_keys)
 
 
 # --- TARGETED HARVESTER ENDPOINTS ---
@@ -156,7 +206,7 @@ def harvest_real_estate_roi(
         "Vacancy Rate": "15.0%",
     }
 
-    harvested = harvest_semantic_schema(
+    harvested, fallback_keys = _harvest_with_provenance(
         query, schema_instruction, expected_keys, fallbacks
     )
 
@@ -165,7 +215,11 @@ def harvest_real_estate_roi(
         "Property Type": property_type.capitalize(),
         "Avg Lease (PSF)": harvested["Avg Lease (PSF)"],
         "Vacancy Rate": harvested["Vacancy Rate"],
-        "Source": "CoStar / Zillow Live Benchmark (Evolved Serper Harvester)",
+        "Source": _source_label(
+            "CoStar / Zillow Live Benchmark (Evolved Serper Harvester)",
+            fallback_keys,
+            expected_keys,
+        ),
     }
 
 
@@ -192,7 +246,7 @@ def harvest_climate_risk(city_name: str) -> dict:
         "Primary Hazard (Flood)": "Moderate",
     }
 
-    harvested = harvest_semantic_schema(
+    harvested, fallback_keys = _harvest_with_provenance(
         query, schema_instruction, expected_keys, fallbacks
     )
 
@@ -201,7 +255,11 @@ def harvest_climate_risk(city_name: str) -> dict:
         "Overall Risk Rating": harvested["Overall Risk Rating"],
         "Primary Hazard (Heat)": harvested["Primary Hazard (Heat)"],
         "Primary Hazard (Flood)": harvested["Primary Hazard (Flood)"],
-        "Source": "FEMA National Risk Index (NRI) Live Grounding (Evolved Serper Harvester)",
+        "Source": _source_label(
+            "FEMA National Risk Index (NRI) Live Grounding (Evolved Serper Harvester)",
+            fallback_keys,
+            expected_keys,
+        ),
     }
 
 
@@ -228,7 +286,7 @@ def harvest_logistics_efficiency(city_name: str) -> dict:
         "Transit Reliability Rate": "85%",
     }
 
-    harvested = harvest_semantic_schema(
+    harvested, fallback_keys = _harvest_with_provenance(
         query, schema_instruction, expected_keys, fallbacks
     )
 
@@ -239,7 +297,11 @@ def harvest_logistics_efficiency(city_name: str) -> dict:
             "Shipping Cost Index (Lower=Better)"
         ],
         "Transit Reliability Rate": harvested["Transit Reliability Rate"],
-        "Source": "DOT BTS / FreightWaves SONAR Live Grounding (Evolved Serper Harvester)",
+        "Source": _source_label(
+            "DOT BTS / FreightWaves SONAR Live Grounding (Evolved Serper Harvester)",
+            fallback_keys,
+            expected_keys,
+        ),
     }
 
 
@@ -266,7 +328,7 @@ def harvest_cultural_amenities(city_name: str) -> dict:
         "Safety Rating (FBI UCR)": "Moderate",
     }
 
-    harvested = harvest_semantic_schema(
+    harvested, fallback_keys = _harvest_with_provenance(
         query, schema_instruction, expected_keys, fallbacks
     )
 
@@ -275,7 +337,11 @@ def harvest_cultural_amenities(city_name: str) -> dict:
         "Walkability Score (0-100)": harvested["Walkability Score (0-100)"],
         "Amenity/Cultural Density": harvested["Amenity/Cultural Density"],
         "Safety Rating (FBI UCR)": harvested["Safety Rating (FBI UCR)"],
-        "Source": "WalkScore & Google Places Live Grounding (Evolved Serper Harvester)",
+        "Source": _source_label(
+            "WalkScore & Google Places Live Grounding (Evolved Serper Harvester)",
+            fallback_keys,
+            expected_keys,
+        ),
     }
 
 
@@ -302,7 +368,7 @@ def harvest_regional_incentives(state_name: str) -> dict:
         "Statutory Corporate Credits": "Job Training Grants & R&D Tax Credits",
     }
 
-    harvested = harvest_semantic_schema(
+    harvested, fallback_keys = _harvest_with_provenance(
         query, schema_instruction, expected_keys, fallbacks
     )
 
@@ -311,5 +377,9 @@ def harvest_regional_incentives(state_name: str) -> dict:
         "Top Incentive Program": harvested["Top Incentive Program"],
         "Estimated Subsidy Yield": harvested["Estimated Subsidy Yield"],
         "Statutory Corporate Credits": harvested["Statutory Corporate Credits"],
-        "Source": "Good Jobs First Subsidy Tracker Live Grounding (Evolved Serper Harvester)",
+        "Source": _source_label(
+            "Good Jobs First Subsidy Tracker Live Grounding (Evolved Serper Harvester)",
+            fallback_keys,
+            expected_keys,
+        ),
     }

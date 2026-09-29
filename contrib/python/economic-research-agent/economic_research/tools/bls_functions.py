@@ -15,15 +15,67 @@
 """Tools for Bureau of Labor Statistics (Internal Logic)."""
 
 import json
+import logging
 import os
 from typing import Any
 
 import pandas as pd
-from fredapi import Fred
 
+from economic_research.shared_libraries.fred_client import (
+    TimeoutFred as Fred,  # fredapi.Fred plus a request timeout
+)
 from economic_research.shared_libraries.helper import get_session_api_key
 
 from .tax_foundation_skill import fetch_state_tax_rates
+
+logger = logging.getLogger(__name__)
+
+_MISSING_FRED_KEY = (
+    "FRED_API_KEY is not set. Ask the user for a FRED API key "
+    "(https://fredaccount.stlouisfed.org/apikeys)."
+)
+
+
+def _fred_client() -> Fred | None:
+    """Returns a FRED client, or None when no usable API key is configured.
+
+    ``Fred(api_key=None)`` raises ``ValueError``, so check the key first.
+    """
+    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
+    if not fred_key:
+        return None
+    try:
+        return Fred(api_key=fred_key)
+    except ValueError as exc:
+        logger.warning("Could not create FRED client: %s", exc)
+        return None
+
+
+def _latest_fred_value(
+    fred: Fred, search_query: str
+) -> tuple[str, float] | None:
+    """Returns (series_id, latest non-NaN value) for the top search hit.
+
+    Returns None when the search finds nothing (fredapi returns ``None`` for
+    empty searches), the series is empty, or the API call fails.
+    """
+    try:
+        search_results = fred.search(search_query)
+        if search_results is None or search_results.empty:
+            return None
+        series_id = str(search_results.iloc[0].name)
+        series_data = fred.get_series(series_id)
+        if series_data is None:
+            return None
+        series_data = series_data.dropna()
+        if series_data.empty:
+            return None
+        return series_id, float(series_data.iloc[-1])
+    except Exception as exc:  # one bad lookup must not fail all
+        logger.warning(
+            "FRED lookup failed for %r: %s", search_query, type(exc).__name__
+        )
+        return None
 
 
 def find_labor_force_stats(
@@ -49,8 +101,9 @@ def find_labor_force_stats(
     )
 
     if "ERROR" in macro_json or "No FRED data" in macro_json:
-        # Fallback to empty DataFrame
-        return pd.DataFrame(), {"citations": []}
+        # Must stay JSON-serializable: ADK encodes tool results as JSON, so a
+        # DataFrame here would abort the whole agent run.
+        return [{"Message": macro_json}], {"citations": []}
 
     data = json.loads(macro_json)
     labor_force_df = pd.DataFrame(data)
@@ -77,26 +130,24 @@ def find_median_hourly_wages(
         median_hourly_wages: A Pandas Dataframe containing the hourly
             wages per hour.
     """
-    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
-    fred = Fred(api_key=fred_key)
+    fred = _fred_client()
+    if fred is None:
+        return [{"ERROR": _MISSING_FRED_KEY}], {"citations": []}
 
     results = []
     for city in city_names:
         # Live search for occupation wages (fallback to general wages if specific failed)
         search_query = f"{city} wages"
-        search_results = fred.search(search_query)
-        if search_results is not None and not search_results.empty:
-            series_id = search_results.iloc[0].name
-            series_data = fred.get_series(series_id)
-            if series_data is not None and not series_data.empty:
-                val = series_data.iloc[-1]
-                results.append(
-                    {
-                        "City": city,
-                        "Median Wage": f"${val:.2f}",
-                        "Source": f"FRED ({series_id})",
-                    }
-                )
+        series = _latest_fred_value(fred, search_query)
+        if series is not None:
+            series_id, val = series
+            results.append(
+                {
+                    "City": city,
+                    "Median Wage": f"${val:.2f}",
+                    "Source": f"FRED ({series_id})",
+                }
+            )
 
     if not results:
         return [{"Message": "No wage data found via FRED live search."}], {
@@ -120,25 +171,23 @@ def find_state_union_employment(
         union_employment_rate: A Pandas Dataframe containing the hourly
             state union employment rates.
     """
-    fred_key = get_session_api_key("FRED_API_KEY", os.getenv("FRED_API_KEY"))
-    fred = Fred(api_key=fred_key)
+    fred = _fred_client()
+    if fred is None:
+        return [{"ERROR": _MISSING_FRED_KEY}], {"citations": []}
 
     results = []
     for state in state_names:
         search_query = f"{state} union membership percentage"
-        search_results = fred.search(search_query)
-        if search_results is not None and not search_results.empty:
-            series_id = search_results.iloc[0].name
-            series_data = fred.get_series(series_id)
-            if series_data is not None and not series_data.empty:
-                val = series_data.iloc[-1]
-                results.append(
-                    {
-                        "State": state,
-                        "Union Membership %": f"{val:.1f}%",
-                        "Source": f"FRED ({series_id})",
-                    }
-                )
+        series = _latest_fred_value(fred, search_query)
+        if series is not None:
+            series_id, val = series
+            results.append(
+                {
+                    "State": state,
+                    "Union Membership %": f"{val:.1f}%",
+                    "Source": f"FRED ({series_id})",
+                }
+            )
 
     if not results:
         return [{"Message": "No union data found via FRED live search."}], {

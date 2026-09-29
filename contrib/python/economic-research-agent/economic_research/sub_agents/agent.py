@@ -18,6 +18,7 @@ from google.adk.agents import Agent
 from google.adk.models import Gemini
 
 from economic_research.shared_libraries.helper import get_default_model
+from economic_research.shared_libraries.tool_threads import run_all_in_threads
 
 from .prompt import JudgePrompts
 from .tools.search_skill import web_search_skill
@@ -30,11 +31,15 @@ class JudgeAgent:
     def __init__(self):
         pass
 
-    def get_agent(self) -> Agent:
+    def get_agent(self, output_key: str | None = None) -> Agent:
         """
         Instantiates the Auditor Judge agent using ADK.
+
+        Args:
+            output_key: Optional session-state key to store the verdict in.
         """
-        tools = [web_search_skill]
+        # Web search is blocking HTTP; keep it off the event loop.
+        tools = run_all_in_threads([web_search_skill])
 
         # We use Gemini 3.5 Flash as a lightweight, fast auditor
         resolved_model = get_default_model(os.getenv("MODEL_NAME"))
@@ -43,4 +48,5 @@ class JudgeAgent:
             model=Gemini(model=resolved_model),
             instruction=JUDGE_INSTRUCTIONS,
             tools=tools,
+            output_key=output_key,
         )

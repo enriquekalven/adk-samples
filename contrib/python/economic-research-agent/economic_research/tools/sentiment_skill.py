@@ -15,12 +15,23 @@
 """ADK Skill: Real-Time Market Sentiment (NewsAPI)."""
 
 import json
+import logging
 import os
 
 import requests
 from pydantic import BaseModel, Field
 
-from economic_research.shared_libraries.helper import get_session_api_key
+from economic_research.shared_libraries.helper import (
+    HTTP_TIMEOUT_SECONDS,
+    get_session_api_key,
+    redact_secrets,
+    safe_error,
+)
+
+logger = logging.getLogger(__name__)
+
+NEWS_API_URL = "https://newsapi.org/v2/everything"
+_MAX_ERROR_BODY_CHARS = 300
 
 
 class SentimentRequest(BaseModel):
@@ -43,10 +54,19 @@ def analyze_market_sentiment(query: str, language: str = "en") -> str:
 
     # NewsAPI endpoint for top headlines or everything.
     # 'everything' allows for more specific query matching.
-    url = f"https://newsapi.org/v2/everything?q={query}&language={language}&sortBy=relevancy&pageSize=8&apiKey={api_key}"
+    # Passing params (instead of an f-string URL) URL-encodes the query.
+    params = {
+        "q": query,
+        "language": language,
+        "sortBy": "relevancy",
+        "pageSize": 8,
+        "apiKey": api_key,
+    }
 
     try:
-        response = requests.get(url, timeout=12)
+        response = requests.get(
+            NEWS_API_URL, params=params, timeout=HTTP_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             data = response.json()
             articles = data.get("articles", [])
@@ -70,9 +90,9 @@ def analyze_market_sentiment(query: str, language: str = "en") -> str:
             # The Scribe node or LLM will perform the final sentiment weighting on these results.
             return json.dumps(results, indent=2)
         else:
-            return (
-                f"Error from NewsAPI: {response.status_code} - {response.text}"
-            )
+            body = redact_secrets(str(response.text))[:_MAX_ERROR_BODY_CHARS]
+            return f"Error from NewsAPI: {response.status_code} - {body}"
 
     except Exception as e:
-        return f"Request failed: {e!s}"
+        logger.warning("NewsAPI request failed: %s", safe_error(e))
+        return f"Request failed: {safe_error(e)}"

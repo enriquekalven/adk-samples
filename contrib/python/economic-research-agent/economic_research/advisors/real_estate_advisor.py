@@ -21,6 +21,11 @@ import logging
 import os
 import re
 
+from economic_research.shared_libraries.helper import (
+    SANDBOX_SOURCE,
+    get_default_model,
+    safe_error,
+)
 from economic_research.tools.dynamic_entity_resolver import resolve_fips
 from economic_research.tools.hud_skill import (
     fetch_hud_fmr_data,
@@ -31,6 +36,10 @@ from economic_research.tools.mls_property_analysis_skill import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Used only when HUD FMR data is unavailable; labelled as sandbox in output.
+DEFAULT_RENT_2BR = 1500.0
 
 
 class RealEstatePortfolioAdvisor:
@@ -45,17 +54,23 @@ class RealEstatePortfolioAdvisor:
         prop: dict,
         hud_rent_2br: float,
         ami_limit: float | None = None,
-    ) -> dict:
+        rent_basis: str = "HUD Fair Market Rent (2BR)",
+    ) -> dict | None:
         """
         Calculates Pro-Forma ROI, Cap Rate, Gross Rent Multiplier, and Cash-on-Cash Return using the 50% Rule.
+
+        Returns None when the listing has no usable price, instead of
+        inventing one.
         """
         try:
             raw_price = (
-                prop.get("Price", "$0").replace("$", "").replace(",", "")
+                str(prop.get("Price", "")).replace("$", "").replace(",", "")
             )
             price = float(raw_price)
-        except Exception:
-            price = 300000.0
+        except (TypeError, ValueError):
+            return None
+        if price <= 0:
+            return None
 
         beds = 2
         try:
@@ -128,6 +143,8 @@ class RealEstatePortfolioAdvisor:
             "Cap Rate": f"{cap_rate:.2f}%",
             "Cash-on-Cash Return": f"{coc_return:.2f}%",
             "Affordability Status": affordability_status,
+            "Rent Basis": rent_basis,
+            "Listing Source": prop.get("Source", "RentCast"),
         }
 
     def evaluate_city(
@@ -147,10 +164,15 @@ class RealEstatePortfolioAdvisor:
         if isinstance(raw_listings, dict) and "status" in raw_listings:
             return []
 
-        clean_city = city_name.split(",", maxsplit=1)[0].strip()
-        fips = resolve_fips(clean_city)
+        # Pass "City, ST" so the resolver can check the state; it returns ""
+        # for places it cannot resolve (no silent default county).
+        fips = resolve_fips(city_name.strip())
 
-        hud_rent_2br = 1500.0
+        hud_rent_2br = DEFAULT_RENT_2BR
+        rent_basis = (
+            f"{SANDBOX_SOURCE}: default ${DEFAULT_RENT_2BR:,.0f}/mo 2BR rent "
+            "(HUD FMR unavailable)"
+        )
         ami_limit = 0.0
 
         if fips:
@@ -160,11 +182,15 @@ class RealEstatePortfolioAdvisor:
                     hud_rent_2br = float(
                         hud_data["Rent_2BR"].replace("$", "").replace(",", "")
                     )
+                    rent_basis = "HUD Fair Market Rent (2BR)"
             except Exception as exc:
                 logger.debug("Failed to parse HUD FMR data: %s", exc)
 
             try:
-                income_data = json.loads(fetch_hud_income_limits(fips))
+                # HUD sizes a 2BR unit for a 3-person household.
+                income_data = json.loads(
+                    fetch_hud_income_limits(fips, household_size=3)
+                )
                 if "AMI_50_Level" in income_data:
                     ami_limit = float(
                         income_data["AMI_50_Level"]
@@ -177,9 +203,10 @@ class RealEstatePortfolioAdvisor:
         results = []
         for prop in raw_listings:
             investment_data = self.calculate_investment_yield(
-                prop, hud_rent_2br, ami_limit
+                prop, hud_rent_2br, ami_limit, rent_basis=rent_basis
             )
-            results.append(investment_data)
+            if investment_data is not None:
+                results.append(investment_data)
 
         try:
             results.sort(
@@ -259,7 +286,7 @@ class RealEstatePortfolioAdvisor:
             """
 
             response = client.models.generate_content(
-                model=os.getenv("MODEL_NAME_GENERATED_1"),
+                model=get_default_model(os.getenv("MODEL_NAME_GENERATED_1")),
                 contents=comparison_prompt,
             )
             report_text = response.text
@@ -267,7 +294,8 @@ class RealEstatePortfolioAdvisor:
 
         except Exception as e:
             brief_sections.append(
-                f"## ⚖️ Portfolio Synthesis\nError executing PE firm synthesis: {e}"
+                "## ⚖️ Portfolio Synthesis\nError executing PE firm synthesis: "
+                f"{safe_error(e)}"
             )
 
         return "\n".join(brief_sections)

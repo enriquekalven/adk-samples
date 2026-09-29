@@ -18,6 +18,8 @@ import json
 
 from us import states
 
+from economic_research.shared_libraries.helper import safe_error
+
 # High-fidelity FIPS mapping for common site-selection hubs
 COUNTY_FIPS_REGISTRY = {
     "Texas": {
@@ -76,4 +78,4 @@ def get_region_identifiers(
         return json.dumps(result, indent=2)
 
     except Exception as e:
-        return json.dumps({"ERROR": str(e)}, indent=2)
+        return json.dumps({"ERROR": safe_error(e)}, indent=2)
