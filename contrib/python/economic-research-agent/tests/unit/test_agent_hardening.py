@@ -365,3 +365,27 @@ def test_utility_skill_labels_fallback_as_sandbox(monkeypatch):
     )
     rows = json.loads(get_industrial_infrastructure_stats(["Texas"]))
     assert rows[0]["Source"].startswith(helper.SANDBOX_SOURCE)
+
+
+def test_timeout_fred_rejects_xml_entity_expansion(monkeypatch):
+    """defusedxml blocks "billion laughs" style payloads."""
+    bomb = (
+        b'<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">'
+        b'<!ENTITY lol2 "&lol;&lol;&lol;&lol;">]><observations>&lol2;'
+        b"</observations>"
+    )
+    monkeypatch.setattr(
+        "economic_research.shared_libraries.fred_client.requests.get",
+        lambda *a, **k: SimpleNamespace(status_code=200, content=bomb),
+    )
+    with pytest.raises(ValueError):  # EntitiesForbidden subclasses it
+        TimeoutFred(api_key="fredkey").get_series("AUST448UR")
+
+
+def test_supervisor_bypass_flag_needs_no_code_default(monkeypatch):
+    from economic_research.agent import _supervisor_bypassed
+
+    monkeypatch.delenv("ERA_BYPASS_SUPERVISOR", raising=False)
+    assert _supervisor_bypassed() is False
+    monkeypatch.setenv("ERA_BYPASS_SUPERVISOR", " TRUE ")
+    assert _supervisor_bypassed() is True

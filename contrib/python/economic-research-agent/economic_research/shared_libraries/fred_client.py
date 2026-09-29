@@ -22,9 +22,10 @@ the API key.
 """
 
 import os
-import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import Element
 
 import requests
+from defusedxml import ElementTree as SafeET
 from fredapi import Fred
 
 from economic_research.shared_libraries.helper import (
@@ -50,7 +51,7 @@ class TimeoutFred(Fred):
         if response.status_code != 200:
             try:
                 message = _parse_xml(response.content).get("message")
-            except ET.ParseError:
+            except SafeET.ParseError:
                 message = None
             raise ValueError(
                 message or f"FRED request failed (HTTP {response.status_code})"
@@ -58,10 +59,10 @@ class TimeoutFred(Fred):
         return _parse_xml(response.content)
 
 
-def _parse_xml(payload: bytes) -> ET.Element:
-    # Same parser fredapi uses; the payload comes from the fixed FRED https
-    # endpoint, not from user input.
-    return ET.fromstring(payload)  # noqa: S314
+def _parse_xml(payload: bytes) -> Element:
+    # defusedxml rejects entity-expansion ("billion laughs") and external
+    # entity payloads, in case the response is ever tampered with.
+    return SafeET.fromstring(payload)
 
 
 def get_fred_client() -> TimeoutFred | None:

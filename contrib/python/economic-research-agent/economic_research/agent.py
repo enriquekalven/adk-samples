@@ -126,7 +126,8 @@ every issue it lists and output the complete corrected report (not a diff).
 
 def _supervisor_bypassed() -> bool:
     """True when the Auditor Judge and router loops are disabled (e.g. CI)."""
-    return os.getenv("ERA_BYPASS_SUPERVISOR", "").strip().lower() == "true"
+    flag = os.getenv("ERA_BYPASS_SUPERVISOR") or ""
+    return flag.strip().lower() == "true"
 
 
 def _event_text(event: Any) -> str:
